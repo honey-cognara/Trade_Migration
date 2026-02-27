@@ -6,15 +6,15 @@ Uses async SQLAlchemy for FastAPI compatibility.
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import text
+from dotenv import load_dotenv
 
-# ── Connection String ──────────────────────────────────────────────────────────
-# Set DATABASE_URL in your .env file or AWS Secrets Manager
-# Format: postgresql+asyncpg://user:password@host:5432/tradie_migration
+# Load .env file
+load_dotenv()
+
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://postgres:password@localhost:5432/tradie_migration"
+    "postgresql+asyncpg://postgres:tradie123@localhost:5432/tradie_migration"
 )
-
 # ── Engine ─────────────────────────────────────────────────────────────────────
 engine = create_async_engine(
     DATABASE_URL,
