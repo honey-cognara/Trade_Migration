@@ -33,6 +33,7 @@ class User(Base):
         nullable=False
     )
     email = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=True)   # Local auth — null when using Cognito
     status = Column(String, default="active")
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 
