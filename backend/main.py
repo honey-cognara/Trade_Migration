@@ -1,5 +1,6 @@
 """
-Tradie Migration App – FastAPI Backend Entry Point
+Tradie Migration App – FastAPI Entry Point
+Registers all routers, configures CORS, and initialises the database on startup.
 """
 
 from contextlib import asynccontextmanager
@@ -8,51 +9,63 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.core.database import init_db
 from backend.routers import (
-    auth, candidates, employers, admin,
-    visa_applications, eoi, electrical_scoring,
-    training_providers, rag, dashboard
+    auth,
+    dashboard,
+    admin,
+    candidates,
+    employers,
+    visa_applications,
+    eoi,
+    electrical_scoring,
+    training_providers,
+    rag,
 )
 
 
-# ── Lifespan (startup / shutdown) ─────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Run DB init on startup."""
+    """Run startup tasks (DB init) then yield for request handling."""
     await init_db()
     yield
-    print("🛑 Shutting down...")
 
 
 # ── App ────────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Tradie Migration App API",
-    version="0.1.0-prototype",
-    description="MVP backend for overseas tradesperson migration matching platform.",
+    description=(
+        "Prototype API for the Tradie Migration App. "
+        "Supports candidate onboarding, employer search, EOI submission, "
+        "visa case management, electrical worker scoring, and RAG Q&A."
+    ),
+    version="0.1.0",
     lifespan=lifespan,
 )
 
-# ── CORS ───────────────────────────────────────────────────────────────────────
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# Permissive for prototype; tighten for production.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React dev server
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Routers ────────────────────────────────────────────────────────────────────
-app.include_router(auth.router,               prefix="/api/v1/auth",              tags=["Auth"])
-app.include_router(candidates.router,         prefix="/api/v1/candidates",        tags=["Candidates"])
-app.include_router(employers.router,          prefix="/api/v1/employers",         tags=["Employers"])
-app.include_router(admin.router,              prefix="/api/v1/admin",             tags=["Admin"])
-app.include_router(visa_applications.router,  prefix="/api/v1/visa-applications", tags=["Visa Applications"])
-app.include_router(eoi.router,                prefix="/api/v1/eoi",               tags=["Expressions of Interest"])
-app.include_router(electrical_scoring.router, prefix="/api/v1/scoring",           tags=["Electrical Scoring"])
-app.include_router(training_providers.router, prefix="/api/v1/training",          tags=["Training Providers"])
-app.include_router(rag.router,                prefix="/api/v1/rag",               tags=["RAG Assistant"])
-app.include_router(dashboard.router,          prefix="/api/v1/dashboard",         tags=["Dashboard"])
+# ── Routers ───────────────────────────────────────────────────────────────────
+app.include_router(auth.router,               prefix="/auth",      tags=["Authentication"])
+app.include_router(dashboard.router,          prefix="/dashboard", tags=["Dashboard"])
+app.include_router(admin.router,              prefix="/admin",     tags=["Admin"])
+app.include_router(candidates.router,         prefix="/candidates",tags=["Candidates"])
+app.include_router(employers.router,          prefix="/employers", tags=["Employers"])
+app.include_router(visa_applications.router,  prefix="/visa",      tags=["Visa Applications"])
+app.include_router(eoi.router,                prefix="/eoi",       tags=["Expressions of Interest"])
+app.include_router(electrical_scoring.router, prefix="/scoring",   tags=["Electrical Scoring"])
+app.include_router(training_providers.router, prefix="/training",  tags=["Training Providers"])
+app.include_router(rag.router,                prefix="/rag",       tags=["RAG / AI Assistant"])
 
 
-@app.get("/health")
-async def health():
-    return {"status": "ok", "app": "Tradie Migration App", "version": "0.1.0-prototype"}
+# ── Health Check ───────────────────────────────────────────────────────────────
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """Quick liveness probe."""
+    return {"status": "ok", "service": "tradie-migration-api", "version": "0.1.0"}
