@@ -7,8 +7,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.core.database import init_db
-from backend.routers import (
+from backend.db.setup import init_db
+from backend.api.routes import (
     auth,
     dashboard,
     admin,
