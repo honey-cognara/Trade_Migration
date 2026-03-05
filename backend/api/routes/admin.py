@@ -9,6 +9,7 @@ Actions:
 Access: admin role only.
 """
 
+import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,8 +67,13 @@ async def verify_employer(
     if payload.action not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail="action must be 'approve' or 'reject'")
 
+    try:
+        emp_uuid = uuid.UUID(employer_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="employer_id must be a valid UUID")
+
     result = await db.execute(
-        select(EmployerCompany).where(EmployerCompany.id == employer_id)
+        select(EmployerCompany).where(EmployerCompany.id == emp_uuid)
     )
     employer = result.scalar_one_or_none()
     if not employer:
@@ -89,6 +95,28 @@ async def list_all_employers(
     _: User = Depends(require_roles("admin")),
 ):
     """Return all employer companies with their verification status."""
+    result = await db.execute(select(EmployerCompany).order_by(EmployerCompany.created_at.desc()))
+    employers = result.scalars().all()
+    rows = [
+        {
+            "id": str(e.id),
+            "company_name": e.company_name,
+            "industry": e.industry,
+            "verification_status": e.verification_status,
+            "contact_email": e.contact_email,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in employers
+    ]
+    return rows
+
+
+@router.get("/companies")
+async def list_all_companies(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    """Alias for /employers — return all employer companies."""
     result = await db.execute(select(EmployerCompany).order_by(EmployerCompany.created_at.desc()))
     employers = result.scalars().all()
     return [
@@ -113,8 +141,13 @@ async def admin_unpublish_candidate(
     current_user: User = Depends(require_roles("admin")),
 ):
     """Force-unpublish a candidate profile."""
+    try:
+        cand_uuid = uuid.UUID(candidate_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+
     result = await db.execute(
-        select(CandidateProfile).where(CandidateProfile.id == candidate_id)
+        select(CandidateProfile).where(CandidateProfile.id == cand_uuid)
     )
     profile = result.scalar_one_or_none()
     if not profile:

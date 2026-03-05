@@ -13,12 +13,13 @@ load_dotenv()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://postgres:tradie123@localhost:5432/tradie_migration"
+    "postgresql+asyncpg://postgres:123@localhost:5433/tradie_migration"
 )
+
 # ── Engine ─────────────────────────────────────────────────────────────────────
 engine = create_async_engine(
     DATABASE_URL,
-    echo=True,          # Set False in production
+    echo=False,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
@@ -52,13 +53,49 @@ async def get_db() -> AsyncSession:
 async def init_db():
     """
     Creates all tables and enables pgvector extension.
-    Call once on startup (or use Alembic migrations in production).
+    pgvector is optional - if not installed, RAG endpoints will not work
+    but all other endpoints remain fully functional.
     """
     from backend.db.models.models import Base
 
     async with engine.begin() as conn:
-        # Enable pgvector extension first
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        # Create all tables from ORM models
-        await conn.run_sync(Base.metadata.create_all)
-    print("✅ Database tables created and pgvector enabled.")
+        # Try to enable pgvector - warn but do not crash if not installed
+        try:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            import os as _os
+            _os.environ["PGVECTOR_PG_EXTENSION_OK"] = "true"
+            print("[OK] pgvector extension enabled.")
+        except Exception as e:
+            import os as _os
+            _os.environ["PGVECTOR_PG_EXTENSION_OK"] = "false"
+            print(f"[WARN] pgvector not available: {type(e).__name__}")
+            print("[WARN] RAG embedding endpoints disabled. All other endpoints work fine.")
+
+        # Create all tables - skip TextChunk (vector column) if pgvector missing
+        try:
+            await conn.run_sync(Base.metadata.create_all)
+            print("[OK] All database tables created.")
+        except Exception as e:
+            print(f"[WARN] Some tables could not be created (likely missing pgvector): {e}")
+            print("[INFO] Creating non-vector tables only...")
+            from backend.db.models.models import (
+                User, CandidateProfile, EmployerCompany, VisaApplication,
+                ApplicantDocument, ExpressionOfInterest, ElectricalWorkerScore,
+                ConsentRecord, TrainingProvider, TrainingCourse,
+                CandidateRecommendedCourse
+            )
+            safe_tables = [
+                User.__table__, CandidateProfile.__table__,
+                EmployerCompany.__table__, VisaApplication.__table__,
+                ApplicantDocument.__table__, ExpressionOfInterest.__table__,
+                ElectricalWorkerScore.__table__, ConsentRecord.__table__,
+                TrainingProvider.__table__, TrainingCourse.__table__,
+                CandidateRecommendedCourse.__table__,
+            ]
+            for table in safe_tables:
+                try:
+                    await conn.run_sync(lambda c, t=table: t.create(c, checkfirst=True))
+                except Exception as te:
+                    print(f"[WARN] Skipped table '{table.name}': {te}")
+
+    print("[OK] Database initialisation complete.")
