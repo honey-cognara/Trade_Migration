@@ -9,6 +9,7 @@ Endpoints:
 Access: admin, company_admin, migration_agent, employer.
 """
 
+import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel
@@ -50,19 +51,31 @@ async def ask_question(
     - If no documents have been ingested, returns status='no_documents'.
     - In local/dev mode (USE_STUB_EMBEDDINGS=true), returns a stub answer.
     """
-    # Verify candidate exists
+    # Verify candidate exists — cast str → UUID for asyncpg compatibility
+    try:
+        cid_uuid = uuid.UUID(payload.candidate_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+
     result = await db.execute(
-        select(CandidateProfile).where(CandidateProfile.id == payload.candidate_id)
+        select(CandidateProfile).where(CandidateProfile.id == cid_uuid)
     )
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Candidate not found")
 
-    return await answer_question(
-        db=db,
-        candidate_id=payload.candidate_id,
-        question=payload.question,
-        top_k=payload.top_k,
-    )
+    try:
+        return await answer_question(
+            db=db,
+            candidate_id=str(cid_uuid),
+            question=payload.question,
+            top_k=payload.top_k,
+        )
+    except Exception as exc:
+        import traceback
+        raise HTTPException(
+            status_code=500,
+            detail=f"RAG error: {type(exc).__name__}: {str(exc)}\n{traceback.format_exc()[-1500:]}"
+        )
 
 
 @router.post("/ingest/{candidate_id}/{document_id}", status_code=201)
@@ -88,16 +101,22 @@ async def ingest_document(
 
     Body: multipart/form-data with a 'file' field (.pdf or .docx).
     """
-    # Validate candidate
+    # Validate candidate — cast str → UUID for asyncpg compatibility
+    try:
+        cid_uuid = uuid.UUID(candidate_id)
+        did_uuid = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id and document_id must be valid UUIDs")
+
     cand_result = await db.execute(
-        select(CandidateProfile).where(CandidateProfile.id == candidate_id)
+        select(CandidateProfile).where(CandidateProfile.id == cid_uuid)
     )
     if not cand_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Candidate not found")
 
     # Validate document record
     doc_result = await db.execute(
-        select(ApplicantDocument).where(ApplicantDocument.id == document_id)
+        select(ApplicantDocument).where(ApplicantDocument.id == did_uuid)
     )
     if not doc_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Document record not found")
@@ -134,9 +153,15 @@ async def list_text_chunks(
     List stored text chunks for a candidate (for inspection / debugging).
     Shows chunk text (truncated to 300 chars) and whether an embedding exists.
     """
+    # Cast str → UUID for asyncpg compatibility
+    try:
+        cid_uuid = uuid.UUID(candidate_id)
+    except ValueError:
+        cid_uuid = None
+
     result = await db.execute(
         select(TextChunk)
-        .where(TextChunk.candidate_id == candidate_id)
+        .where(TextChunk.candidate_id == cid_uuid)
         .order_by(TextChunk.created_at.asc())
         .limit(limit)
     )

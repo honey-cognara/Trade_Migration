@@ -11,7 +11,23 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, DeclarativeBase
-from pgvector.sqlalchemy import Vector
+# pgvector — distinguish Python package availability from PostgreSQL extension availability
+# The Python package may be installed (pip) but the PG extension not installed.
+# setup.py sets PGVECTOR_PG_EXTENSION_OK=true *only* when the PG extension loads successfully.
+import os as _os
+
+try:
+    from pgvector.sqlalchemy import Vector
+    _PGVECTOR_PYTHON_PACKAGE = True
+except Exception:
+    Vector = None
+    _PGVECTOR_PYTHON_PACKAGE = False
+
+# True only when BOTH the Python package AND the PostgreSQL extension are available
+PGVECTOR_AVAILABLE = (
+    _PGVECTOR_PYTHON_PACKAGE and
+    _os.getenv("PGVECTOR_PG_EXTENSION_OK", "false").lower() == "true"
+)
 
 
 class Base(DeclarativeBase):
@@ -229,7 +245,8 @@ class TextChunk(Base):
     candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidate_profiles.id"), nullable=False)
     source_document_id = Column(UUID(as_uuid=True), ForeignKey("applicant_documents.id"), nullable=False)
     chunk_text = Column(Text, nullable=False)
-    embedding = Column(Vector(1536))  # 1536 dims for AWS Bedrock titan-embed-text-v1
+    # 1536-dim vector for Bedrock titan-embed-text-v1; falls back to Text if pgvector missing
+    embedding = Column(Vector(1536) if PGVECTOR_AVAILABLE else Text, nullable=True)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 
     # Relationships
