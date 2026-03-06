@@ -1,3 +1,23 @@
-
+# Environment variables
 .env
 backend/.env
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary test files
+tmp_*.py

@@ -186,6 +186,56 @@ async def list_all_candidates(
     ]
 
 
+@router.get("/candidates/{candidate_id}")
+async def get_candidate_by_id(
+    candidate_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_roles("admin", "company_admin", "migration_agent")),
+):
+    """Return a single candidate profile by ID."""
+    try:
+        cand_uuid = uuid.UUID(candidate_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+    result = await db.execute(select(CandidateProfile).where(CandidateProfile.id == cand_uuid))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    return {
+        "id": str(profile.id),
+        "full_name": profile.full_name,
+        "nationality": profile.nationality,
+        "country_of_residence": profile.country_of_residence,
+        "trade_category": profile.trade_category,
+        "is_electrical_worker": profile.is_electrical_worker,
+        "years_experience": profile.years_experience,
+        "languages": profile.languages,
+        "profile_summary": profile.profile_summary,
+        "published": profile.published,
+        "created_at": profile.created_at.isoformat() if profile.created_at else None,
+    }
+
+
+@router.delete("/candidates/{candidate_id}", status_code=204)
+async def admin_delete_candidate(
+    candidate_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    """Permanently delete a candidate profile (admin only)."""
+    try:
+        cand_uuid = uuid.UUID(candidate_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+    result = await db.execute(select(CandidateProfile).where(CandidateProfile.id == cand_uuid))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Candidate profile not found")
+    await db.delete(profile)
+    await db.commit()
+    return None
+
+
 # ── Users ─────────────────────────────────────────────────────────────────────
 
 @router.get("/users")
@@ -206,3 +256,77 @@ async def list_all_users(
         }
         for u in users
     ]
+
+
+@router.get("/employers/{employer_id}")
+async def get_employer_by_id(
+    employer_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_roles("admin", "company_admin", "migration_agent")),
+):
+    """Return a single employer company by ID."""
+    try:
+        emp_uuid = uuid.UUID(employer_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="employer_id must be a valid UUID")
+    result = await db.execute(select(EmployerCompany).where(EmployerCompany.id == emp_uuid))
+    emp = result.scalar_one_or_none()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employer not found")
+    return {
+        "id": str(emp.id),
+        "company_name": emp.company_name,
+        "abn_or_identifier": emp.abn_or_identifier,
+        "contact_name": emp.contact_name,
+        "contact_email": emp.contact_email,
+        "industry": emp.industry,
+        "verification_status": emp.verification_status,
+        "created_at": emp.created_at.isoformat() if emp.created_at else None,
+    }
+
+
+@router.delete("/employers/{employer_id}", status_code=204)
+async def admin_delete_employer(
+    employer_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    """Permanently delete an employer company (admin only)."""
+    try:
+        emp_uuid = uuid.UUID(employer_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="employer_id must be a valid UUID")
+    result = await db.execute(select(EmployerCompany).where(EmployerCompany.id == emp_uuid))
+    emp = result.scalar_one_or_none()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employer not found")
+    await db.delete(emp)
+    await db.commit()
+    return None
+
+
+class UserStatusUpdate(BaseModel):
+    status: str  # "active" | "inactive"
+
+
+@router.put("/users/{user_id}/status")
+async def update_user_status(
+    user_id: str,
+    payload: UserStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    """Activate or deactivate a user account."""
+    if payload.status not in ("active", "inactive"):
+        raise HTTPException(status_code=400, detail="status must be 'active' or 'inactive'")
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="user_id must be a valid UUID")
+    result = await db.execute(select(User).where(User.id == user_uuid))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.status = payload.status
+    await db.commit()
+    return {"id": str(user.id), "email": user.email, "status": user.status}
