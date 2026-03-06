@@ -164,6 +164,20 @@ async def unpublish_profile(
     return {"published": False, "candidate_id": str(profile.id)}
 
 
+@router.delete("/profile", status_code=204)
+async def delete_profile(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("candidate")),
+):
+    """Permanently delete the authenticated candidate's profile."""
+    profile = await _get_own_profile(current_user.id, db)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    await db.delete(profile)
+    await db.commit()
+    return None
+
+
 @router.get("/eois")
 async def get_received_eois(
     db: AsyncSession = Depends(get_db),

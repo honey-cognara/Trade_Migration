@@ -140,6 +140,23 @@ async def get_my_company(
     }
 
 
+@router.delete("/company", status_code=204)
+async def delete_my_company(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("employer")),
+):
+    """Delete the authenticated employer's company profile."""
+    result = await db.execute(
+        select(EmployerCompany).where(EmployerCompany.owner_user_id == current_user.id)
+    )
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    await db.delete(company)
+    await db.commit()
+    return None
+
+
 # ── Candidate search ───────────────────────────────────────────────────────────
 
 @router.get("/candidates")
