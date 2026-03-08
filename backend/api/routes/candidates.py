@@ -126,6 +126,23 @@ async def update_profile(
 
     await db.commit()
     await db.refresh(profile)
+
+    # Phase 3: Trigger Electrical Scoring automatically on profile update 
+    if profile.is_electrical_worker:
+        from backend.processors.electrical_scoring import score_electrical_worker
+        try:
+            await score_electrical_worker(profile.id, db)
+        except Exception as e:
+            print(f"Failed to auto-score candidate {profile.id} after profile update: {e}")
+    else:
+        # If they untoggled electrical worker, remove any existing score
+        from backend.db.models.models import ElectricalWorkerScore
+        old_score_res = await db.execute(select(ElectricalWorkerScore).where(ElectricalWorkerScore.candidate_id == profile.id))
+        old_score = old_score_res.scalar_one_or_none()
+        if old_score:
+            await db.delete(old_score)
+            await db.commit()
+
     return _profile_to_dict(profile)
 
 
@@ -135,6 +152,18 @@ async def publish_profile(
     current_user: User = Depends(require_roles("candidate")),
 ):
     """Publish the candidate's profile so employers can discover them."""
+    # Check for mandatory consent
+    from backend.db.models.models import ConsentRecord
+    consent_res = await db.execute(select(ConsentRecord).where(ConsentRecord.user_id == current_user.id))
+    consents = consent_res.scalars().all()
+    has_registration_consent = any(c.consent_type == "registration" for c in consents)
+    
+    if not has_registration_consent:
+        raise HTTPException(
+            status_code=403, 
+            detail="Cannot publish profile: mandatory profile publishing/registration consent is missing."
+        )
+
     profile = await _get_own_profile(current_user.id, db)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")

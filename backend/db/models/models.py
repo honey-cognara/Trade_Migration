@@ -140,6 +140,24 @@ class VisaApplication(Base):
     candidate = relationship("CandidateProfile", back_populates="visa_applications")
     employer_company = relationship("EmployerCompany", back_populates="visa_applications")
     documents = relationship("ApplicantDocument", back_populates="visa_application")
+    # new relationship for migration agents
+    assignments = relationship("VisaCaseAssignment", back_populates="visa_application")
+
+
+class VisaCaseAssignment(Base):
+    """Maps a Migration Agent to a Visa Application Case."""
+    __tablename__ = "visa_case_assignments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    visa_application_id = Column(UUID(as_uuid=True), ForeignKey("visa_applications.id"), nullable=False)
+    # The user here MUST have the 'migration_agent' role
+    agent_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    status = Column(String, default="active") # "active" or "unassigned"
+    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+
+    # Relationships
+    visa_application = relationship("VisaApplication", back_populates="assignments")
+    agent = relationship("User", foreign_keys=[agent_user_id])
 
 
 # ─────────────────────────────────────────────

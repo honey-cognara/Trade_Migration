@@ -19,6 +19,8 @@ from backend.api.routes import (
     electrical_scoring,
     training_providers,
     rag,
+    documents,
+    migration_agents,
 )
 
 
@@ -62,6 +64,8 @@ app.include_router(eoi.router,                prefix="/eoi",       tags=["Expres
 app.include_router(electrical_scoring.router, prefix="/scoring",   tags=["Electrical Scoring"])
 app.include_router(training_providers.router, prefix="/training",  tags=["Training Providers"])
 app.include_router(rag.router,                prefix="/rag",       tags=["RAG / AI Assistant"])
+app.include_router(documents.router,          prefix="/documents", tags=["Document Management"])
+app.include_router(migration_agents.router,   prefix="/agents",    tags=["Migration Agents"]) # Added migration_agents router
 
 
 # ── Health Check ───────────────────────────────────────────────────────────────
