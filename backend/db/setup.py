@@ -49,7 +49,6 @@ async def get_db() -> AsyncSession:
             await session.close()
 
 
-# ── Init DB (create tables + enable pgvector) ──────────────────────────────────
 async def init_db():
     """
     Creates all tables and enables pgvector extension.
@@ -57,32 +56,37 @@ async def init_db():
     but all other endpoints remain fully functional.
     """
     from backend.db.models.models import Base
+    pgvector_ok = False
 
+    # Attempt to load extension in one transaction
     async with engine.begin() as conn:
-        # Try to enable pgvector - warn but do not crash if not installed
         try:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             import os as _os
             _os.environ["PGVECTOR_PG_EXTENSION_OK"] = "true"
             print("[OK] pgvector extension enabled.")
+            pgvector_ok = True
         except Exception as e:
             import os as _os
             _os.environ["PGVECTOR_PG_EXTENSION_OK"] = "false"
             print(f"[WARN] pgvector not available: {type(e).__name__}")
             print("[WARN] RAG embedding endpoints disabled. All other endpoints work fine.")
 
-        # Create all tables - skip TextChunk (vector column) if pgvector missing
-        try:
-            await conn.run_sync(Base.metadata.create_all)
-            print("[OK] All database tables created.")
-        except Exception as e:
-            print(f"[WARN] Some tables could not be created (likely missing pgvector): {e}")
+    # Create tables in a fresh transaction to avoid Aborted state
+    async with engine.begin() as conn:
+        if pgvector_ok:
+            try:
+                await conn.run_sync(Base.metadata.create_all)
+                print("[OK] All database tables created.")
+            except Exception as e:
+                print(f"[ERROR] Failed creating all tables: {e}")
+        else:
             print("[INFO] Creating non-vector tables only...")
             from backend.db.models.models import (
                 User, CandidateProfile, EmployerCompany, VisaApplication,
                 ApplicantDocument, ExpressionOfInterest, ElectricalWorkerScore,
                 ConsentRecord, TrainingProvider, TrainingCourse,
-                CandidateRecommendedCourse
+                CandidateRecommendedCourse, VisaCaseAssignment
             )
             safe_tables = [
                 User.__table__, CandidateProfile.__table__,
@@ -90,7 +94,7 @@ async def init_db():
                 ApplicantDocument.__table__, ExpressionOfInterest.__table__,
                 ElectricalWorkerScore.__table__, ConsentRecord.__table__,
                 TrainingProvider.__table__, TrainingCourse.__table__,
-                CandidateRecommendedCourse.__table__,
+                CandidateRecommendedCourse.__table__, VisaCaseAssignment.__table__,
             ]
             for table in safe_tables:
                 try:
