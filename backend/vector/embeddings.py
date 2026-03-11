@@ -1,7 +1,7 @@
 """
-Embeddings – AWS Bedrock Titan Embedding Client
+Embeddings – OpenAI Embedding Client via LangChain
 Converts text chunks into 1536-dimensional float vectors
-using Amazon Bedrock's titan-embed-text-v1 model.
+using OpenAI's text-embedding-3-small model.
 
 Usage:
     from backend.vector.embeddings import embed_text, embed_texts
@@ -10,7 +10,6 @@ Usage:
     vectors = await embed_texts(["chunk one", "chunk two"])
 """
 
-import json
 import os
 import logging
 from typing import List
@@ -19,87 +18,64 @@ logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-BEDROCK_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
-EMBED_MODEL_ID = "amazon.titan-embed-text-v1"
-EMBED_DIMENSIONS = 1536    # Fixed for titan-embed-text-v1
+EMBED_MODEL_ID = "text-embedding-3-small"
+EMBED_DIMENSIONS = 1536    # Fixed for text-embedding-3-small
 
 
 # ── Client (lazy singleton) ──────────────────────────────────────────────────
 
-_bedrock_client = None
+_embeddings_client = None
 
-
-def _get_bedrock_client():
-    """Return a lazily-initialised boto3 Bedrock Runtime client."""
-    global _bedrock_client
-    if _bedrock_client is None:
+def _get_embeddings_client():
+    """Return a lazily-initialised LangChain OpenAIEmbeddings client."""
+    global _embeddings_client
+    if _embeddings_client is None:
         try:
-            import boto3
-            _bedrock_client = boto3.client(
-                "bedrock-runtime",
-                region_name=BEDROCK_REGION,
+            from langchain_openai import OpenAIEmbeddings
+            
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY environment variable is not set")
+                
+            _embeddings_client = OpenAIEmbeddings(
+                model=EMBED_MODEL_ID,
+                api_key=api_key
             )
         except Exception as e:
-            raise RuntimeError(
-                f"Could not create Bedrock client: {e}. "
-                "Ensure AWS credentials are configured (environment variables "
-                "or IAM role)."
-            )
-    return _bedrock_client
+            raise RuntimeError(f"Could not create OpenAI embeddings client: {e}")
+    return _embeddings_client
 
 
 # ── Core Embedding Function ───────────────────────────────────────────────────
 
-def embed_text_sync(text: str) -> List[float]:
+async def embed_text(text: str) -> List[float]:
     """
-    Embed a single text string using Bedrock Titan (synchronous).
-
-    Returns a list of 1536 floats representing the embedding vector.
-    Raises RuntimeError if Bedrock is unreachable or credentials are missing.
+    Embed a single text string using OpenAI text-embedding-3-small.
     """
     if not text or not text.strip():
         raise ValueError("Cannot embed empty text.")
 
-    client = _get_bedrock_client()
-
-    body = json.dumps({"inputText": text.strip()})
-
+    client = _get_embeddings_client()
     try:
-        response = client.invoke_model(
-            modelId=EMBED_MODEL_ID,
-            contentType="application/json",
-            accept="application/json",
-            body=body,
-        )
-        result = json.loads(response["body"].read())
-        return result["embedding"]
+        return await client.aembed_query(text.strip())
     except Exception as e:
-        logger.error(f"Bedrock embedding failed: {e}")
+        logger.error(f"OpenAI embedding failed: {e}")
         raise RuntimeError(f"Embedding generation failed: {e}")
-
-
-async def embed_text(text: str) -> List[float]:
-    """
-    Async wrapper – runs the synchronous Bedrock call in a thread pool
-    so it does not block the FastAPI event loop.
-    """
-    import asyncio
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, embed_text_sync, text)
 
 
 async def embed_texts(texts: List[str]) -> List[List[float]]:
     """
-    Embed multiple text chunks sequentially.
-
-    Returns a list of embedding vectors in the same order as `texts`.
+    Embed multiple text chunks.
     """
-    import asyncio
-    results = []
-    for text in texts:
-        vector = await embed_text(text)
-        results.append(vector)
-    return results
+    if not texts:
+        return []
+        
+    client = _get_embeddings_client()
+    try:
+        return await client.aembed_documents(texts)
+    except Exception as e:
+        logger.error(f"OpenAI batch embedding failed: {e}")
+        raise RuntimeError(f"Batch embedding generation failed: {e}")
 
 
 # ── Stub / Fallback ──────────────────────────────────────────────────────────

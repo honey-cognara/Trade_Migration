@@ -16,7 +16,7 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.processors.document_processor import process_document
-from backend.vector.embeddings import embed_text, embed_texts, embed_text_stub
+from backend.vector.embeddings import embed_text, embed_texts
 from backend.vector.search import similarity_search, store_chunks
 
 logger = logging.getLogger(__name__)
@@ -90,6 +90,48 @@ async def process_and_store_document(
     }
 
 
+# ── Custom Retriever ─────────────────────────────────────────────────────────
+
+from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
+from pydantic import Field
+from typing import Any
+
+class CandidateRetriever(BaseRetriever):
+    """Wraps similarity_search into a LangChain BaseRetriever."""
+    db: Any = Field(exclude=True)
+    candidate_id: str
+    top_k: int = 5
+
+    def _get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun) -> List[Document]:
+        raise NotImplementedError("Sync retrieval not supported")
+
+    async def _aget_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun) -> List[Document]:
+        if USE_STUB_EMBEDDINGS:
+            query_vector = [0.0] * 1536
+        else:
+            query_vector = await embed_text(query)
+            
+        results = await similarity_search(
+            db=self.db,
+            candidate_id=self.candidate_id,
+            query_embedding=query_vector,
+            top_k=self.top_k,
+        )
+        
+        return [
+            Document(
+                page_content=r["chunk_text"],
+                metadata={
+                    "chunk_id": r["id"],
+                    "source_document_id": r["source_document_id"],
+                    "distance": r["distance"],
+                }
+            )
+            for r in results
+        ]
+
 # ── Flow 2 — Query ────────────────────────────────────────────────────────────
 
 async def answer_question(
@@ -99,38 +141,58 @@ async def answer_question(
     top_k: int = 5,
 ) -> dict:
     """
-    RAG query pipeline.
-
-    Steps:
-      1. Embed the user's question.
-      2. Find top_k most similar TextChunks (pgvector cosine search).
-      3. Build a context string from the retrieved chunks.
-      4. Call Bedrock Claude to generate a grounded answer.
-
-    Args:
-        db:           Async DB session.
-        candidate_id: UUID — restricts search to this candidate's documents.
-        question:     Natural language question from the user.
-        top_k:        How many chunks to retrieve as context.
-
-    Returns:
-        Dict with answer, sources, and status.
+    RAG query pipeline using LangChain LCEL.
     """
-    # Step 1 — embed the question
+    from langchain_classic.retrievers.multi_query import MultiQueryRetriever
+    from langchain_classic.retrievers.contextual_compression import ContextualCompressionRetriever
+    from langchain_classic.retrievers.document_compressors import LLMChainExtractor
+    from langchain_openai import ChatOpenAI
+    from langchain_core.prompts import PromptTemplate
+    from langchain_core.output_parsers import StrOutputParser
+    
+    # 1. Base Retriever
+    base_retriever = CandidateRetriever(db=db, candidate_id=candidate_id, top_k=top_k)
+    
+    # 2. Setup LLM
+    llm_model = os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini")
     if USE_STUB_EMBEDDINGS:
-        query_vector = [0.0] * 1536
-    else:
-        query_vector = await embed_text(question)
-
-    # Step 2 — similarity search
-    relevant_chunks = await similarity_search(
-        db=db,
-        candidate_id=candidate_id,
-        query_embedding=query_vector,
-        top_k=top_k,
+        # Stub response for local dev without API key
+        docs = await base_retriever.ainvoke(question)
+        return {
+            "candidate_id": candidate_id,
+            "question": question,
+            "answer": f"[RAG stub — dev mode] Question received: '{question}'. OpenAI not called.",
+            "sources": [
+                {
+                    "chunk_id": doc.metadata.get("chunk_id"),
+                    "source_document_id": doc.metadata.get("source_document_id"),
+                    "excerpt": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content,
+                    "distance": doc.metadata.get("distance", 0.0),
+                }
+                for doc in docs
+            ],
+            "status": "success" if docs else "no_documents"
+        }
+        
+    llm = ChatOpenAI(model=llm_model, temperature=0)
+    
+    # 3. MultiQuery Retriever (expands question into 3 variants)
+    multi_retriever = MultiQueryRetriever.from_llm(
+        retriever=base_retriever,
+        llm=llm
     )
-
-    if not relevant_chunks:
+    
+    # 4. Contextual Compression (extracts only relevant sentences)
+    compressor = LLMChainExtractor.from_llm(llm)
+    compression_retriever = ContextualCompressionRetriever(
+        base_compressor=compressor,
+        base_retriever=multi_retriever
+    )
+    
+    # 5. Retrieve documents
+    retrieved_docs = await compression_retriever.ainvoke(question)
+    
+    if not retrieved_docs:
         return {
             "candidate_id": candidate_id,
             "question": question,
@@ -139,15 +201,24 @@ async def answer_question(
             "status": "no_documents",
             "message": "No document chunks found for this candidate. Upload and process documents first.",
         }
-
-    # Step 3 — build context
-    context = "\n\n---\n\n".join(
-        f"[Source {i+1}] {c['chunk_text']}"
-        for i, c in enumerate(relevant_chunks)
+        
+    # 6. Build Context & Run LLM
+    context_str = "\n\n---\n\n".join(
+        f"[Source {i+1}] {doc.page_content}"
+        for i, doc in enumerate(retrieved_docs)
     )
-
-    # Step 4 — call Bedrock LLM (Claude)
-    answer = await _call_bedrock_llm(question=question, context=context)
+    
+    prompt = PromptTemplate.from_template(
+        "You are an AI assistant helping migration agents assess international tradespeople.\n"
+        "Answer the question below using ONLY the provided context. "
+        "If the context does not contain enough information, say so clearly.\n\n"
+        "### Context:\n{context}\n\n"
+        "### Question:\n{question}\n\n"
+        "### Answer:"
+    )
+    
+    chain = prompt | llm | StrOutputParser()
+    answer = await chain.ainvoke({"context": context_str, "question": question})
 
     return {
         "candidate_id": candidate_id,
@@ -155,71 +226,12 @@ async def answer_question(
         "answer": answer,
         "sources": [
             {
-                "chunk_id": c["id"],
-                "source_document_id": c["source_document_id"],
-                "excerpt": c["chunk_text"][:200] + "..." if len(c["chunk_text"]) > 200 else c["chunk_text"],
-                "distance": c["distance"],
+                "chunk_id": doc.metadata.get("chunk_id"),
+                "source_document_id": doc.metadata.get("source_document_id"),
+                "excerpt": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content,
+                "distance": doc.metadata.get("distance", 0.0),
             }
-            for c in relevant_chunks
+            for doc in retrieved_docs
         ],
         "status": "success",
     }
-
-
-# ── Bedrock LLM Call ──────────────────────────────────────────────────────────
-
-async def _call_bedrock_llm(question: str, context: str) -> str:
-    """
-    Send the question + retrieved context to Bedrock Claude and return the answer.
-    Falls back to a stub response if Bedrock is unavailable.
-    """
-    import asyncio
-
-    def _invoke() -> str:
-        import json
-        import boto3
-
-        bedrock_region = os.getenv("AWS_REGION", "ap-southeast-2")
-        model_id = os.getenv("BEDROCK_LLM_MODEL", "anthropic.claude-3-haiku-20240307-v1:0")
-
-        prompt = (
-            "You are an AI assistant helping migration agents assess international tradespeople.\n"
-            "Answer the question below using ONLY the provided context. "
-            "If the context does not contain enough information, say so clearly.\n\n"
-            f"### Context:\n{context}\n\n"
-            f"### Question:\n{question}\n\n"
-            "### Answer:"
-        )
-
-        client = boto3.client("bedrock-runtime", region_name=bedrock_region)
-        body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 1024,
-            "messages": [{"role": "user", "content": prompt}],
-        })
-
-        try:
-            response = client.invoke_model(
-                modelId=model_id,
-                contentType="application/json",
-                accept="application/json",
-                body=body,
-            )
-            result = json.loads(response["body"].read())
-            return result["content"][0]["text"].strip()
-        except Exception as e:
-            logger.error(f"Bedrock LLM call failed: {e}")
-            # Graceful stub fallback
-            return (
-                f"[RAG stub] AWS Bedrock LLM integration pending. "
-                f"Retrieved {context.count('---') + 1} relevant chunks for your question: '{question}'."
-            )
-
-    if USE_STUB_EMBEDDINGS:
-        return (
-            f"[RAG stub — dev mode] Question received: '{question}'. "
-            "Bedrock not called (USE_STUB_EMBEDDINGS=true)."
-        )
-
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _invoke)
