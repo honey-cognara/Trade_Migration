@@ -13,8 +13,8 @@ from typing import List
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-CHUNK_SIZE = 500        # characters per chunk
-CHUNK_OVERLAP = 100     # characters shared between adjacent chunks
+CHUNK_SIZE = 800        # tokens per chunk
+CHUNK_OVERLAP = 150     # tokens shared between adjacent chunks
 
 
 # ── Text Extraction ────────────────────────────────────────────────────────────
@@ -72,12 +72,12 @@ def chunk_text(
     overlap: int = CHUNK_OVERLAP,
 ) -> List[str]:
     """
-    Split a long text into overlapping fixed-size chunks.
+    Split a long text into chunks using LangChain's RecursiveCharacterTextSplitter.
 
     Args:
         text:       The full document text to split.
-        chunk_size: Maximum number of characters per chunk.
-        overlap:    Number of characters shared between adjacent chunks.
+        chunk_size: Maximum tokens per chunk.
+        overlap:    Tokens shared between adjacent chunks.
 
     Returns:
         List of non-empty text chunks.
@@ -85,19 +85,16 @@ def chunk_text(
     if not text or not text.strip():
         return []
 
-    text = text.strip()
-    chunks: List[str] = []
-    start = 0
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-    while start < len(text):
-        end = start + chunk_size
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        # Advance by (chunk_size - overlap) so chunks share `overlap` chars
-        start += chunk_size - overlap
-
-    return chunks
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=overlap,
+        separators=["\n\n", "\n", ". ", " ", ""]
+    )
+    
+    chunks = splitter.split_text(text.strip())
+    return [c for c in chunks if c.strip()]
 
 
 # ── Combined Pipeline ─────────────────────────────────────────────────────────
