@@ -45,14 +45,26 @@ async def create_visa_application(
     current_user: User = Depends(require_roles(*VISA_ROLES)),
 ):
     """Create a new visa application case for a candidate."""
-    result = await db.execute(select(CandidateProfile).where(CandidateProfile.id == payload.candidate_id))
+    try:
+        cand_uuid = uuid.UUID(payload.candidate_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+
+    emp_uuid = None
+    if payload.employer_company_id:
+        try:
+            emp_uuid = uuid.UUID(payload.employer_company_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="employer_company_id must be a valid UUID")
+
+    result = await db.execute(select(CandidateProfile).where(CandidateProfile.id == cand_uuid))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Candidate not found")
 
     application = VisaApplication(
         id=uuid.uuid4(),
-        candidate_id=payload.candidate_id,
-        employer_company_id=payload.employer_company_id or None,
+        candidate_id=cand_uuid,
+        employer_company_id=emp_uuid,
         status="draft",
         country_of_application=payload.country_of_application,
         notes=payload.notes,
@@ -78,7 +90,11 @@ async def list_visa_applications(
     if status:
         query = query.where(VisaApplication.status == status)
     if candidate_id:
-        query = query.where(VisaApplication.candidate_id == candidate_id)
+        try:
+            cand_uuid = uuid.UUID(candidate_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+        query = query.where(VisaApplication.candidate_id == cand_uuid)
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)
     return [_application_to_dict(a) for a in result.scalars().all()]
@@ -91,7 +107,12 @@ async def get_visa_application(
     _: User = Depends(require_roles(*VISA_ROLES)),
 ):
     """Get a single visa application by ID."""
-    result = await db.execute(select(VisaApplication).where(VisaApplication.id == application_id))
+    try:
+        app_uuid = uuid.UUID(application_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="application_id must be a valid UUID")
+
+    result = await db.execute(select(VisaApplication).where(VisaApplication.id == app_uuid))
     application = result.scalar_one_or_none()
     if not application:
         raise HTTPException(status_code=404, detail="Visa application not found")
@@ -109,7 +130,12 @@ async def update_visa_status(
     if payload.status not in ALLOWED_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status. Allowed: {', '.join(ALLOWED_STATUSES)}")
 
-    result = await db.execute(select(VisaApplication).where(VisaApplication.id == application_id))
+    try:
+        app_uuid = uuid.UUID(application_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="application_id must be a valid UUID")
+
+    result = await db.execute(select(VisaApplication).where(VisaApplication.id == app_uuid))
     application = result.scalar_one_or_none()
     if not application:
         raise HTTPException(status_code=404, detail="Visa application not found")
@@ -131,13 +157,21 @@ async def update_visa_application(
     current_user: User = Depends(require_roles(*VISA_ROLES)),
 ):
     """Update fields of an existing visa application."""
-    result = await db.execute(select(VisaApplication).where(VisaApplication.id == application_id))
+    try:
+        app_uuid = uuid.UUID(application_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="application_id must be a valid UUID")
+
+    result = await db.execute(select(VisaApplication).where(VisaApplication.id == app_uuid))
     application = result.scalar_one_or_none()
     if not application:
         raise HTTPException(status_code=404, detail="Visa application not found")
 
     if payload.employer_company_id is not None:
-        application.employer_company_id = payload.employer_company_id
+        try:
+            application.employer_company_id = uuid.UUID(payload.employer_company_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="employer_company_id must be a valid UUID")
     if payload.country_of_application is not None:
         application.country_of_application = payload.country_of_application
     if payload.notes is not None:
@@ -155,7 +189,12 @@ async def delete_visa_application(
     _: User = Depends(require_roles(*VISA_ROLES)),
 ):
     """Delete a visa application case."""
-    result = await db.execute(select(VisaApplication).where(VisaApplication.id == application_id))
+    try:
+        app_uuid = uuid.UUID(application_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="application_id must be a valid UUID")
+
+    result = await db.execute(select(VisaApplication).where(VisaApplication.id == app_uuid))
     application = result.scalar_one_or_none()
     if not application:
         raise HTTPException(status_code=404, detail="Visa application not found")

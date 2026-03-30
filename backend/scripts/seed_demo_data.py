@@ -37,17 +37,17 @@ async def seed():
         agent_id = uuid.uuid4()
 
         users = [
-            User(id=admin_id, cognito_sub="cognito-admin-001",
+            User(id=admin_id, cognito_sub=f"local-{admin_id}",
                  role="admin", email="admin@tradiemigration.com"),
-            User(id=electrician_user_id, cognito_sub="cognito-cand-001",
+            User(id=electrician_user_id, cognito_sub=f"local-{electrician_user_id}",
                  role="candidate", email="ali.hassan@gmail.com"),
-            User(id=plumber_user_id, cognito_sub="cognito-cand-002",
+            User(id=plumber_user_id, cognito_sub=f"local-{plumber_user_id}",
                  role="candidate", email="raj.kumar@gmail.com"),
-            User(id=employer_user_id, cognito_sub="cognito-emp-001",
+            User(id=employer_user_id, cognito_sub=f"local-{employer_user_id}",
                  role="employer", email="jobs@voltcore.com.au"),
-            User(id=company_admin_id, cognito_sub="cognito-cadmin-001",
+            User(id=company_admin_id, cognito_sub=f"local-{company_admin_id}",
                  role="company_admin", email="casemanager@tradiemigration.com"),
-            User(id=agent_id, cognito_sub="cognito-agent-001",
+            User(id=agent_id, cognito_sub=f"local-{agent_id}",
                  role="migration_agent", email="agent@migrationpro.com.au"),
         ]
         db.add_all(users)

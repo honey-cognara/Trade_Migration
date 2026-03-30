@@ -28,7 +28,7 @@ class UpdateCaseNoteRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/ping")
-async def ping():
+async def ping(current_user: User = Depends(require_roles("migration_agent", "admin"))):
     return {"message": "pong"}
 
 @router.post("/cases/assign", status_code=201)
@@ -63,6 +63,7 @@ async def assign_case_to_me(
         raise HTTPException(status_code=400, detail="Case is already assigned to you.")
 
     assignment = VisaCaseAssignment(
+        id=uuid.uuid4(),
         visa_application_id=visa_uuid,
         agent_user_id=current_user.id
     )
@@ -81,14 +82,22 @@ async def assign_case_to_me(
 @router.get("/cases")
 async def get_my_assigned_cases(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("migration_agent")),
+    current_user: User = Depends(require_roles("migration_agent", "admin")),
 ):
-    """Returns all visa applications assigned to the authenticated agent."""
-    res = await db.execute(
+    """
+    Returns visa case assignments.
+    - migration_agent: only their own active assignments
+    - admin: all active assignments across all agents
+    """
+    base_query = (
         select(VisaCaseAssignment)
         .options(selectinload(VisaCaseAssignment.visa_application))
-        .where((VisaCaseAssignment.agent_user_id == current_user.id) & (VisaCaseAssignment.status == "active"))
+        .where(VisaCaseAssignment.status == "active")
     )
+    if current_user.role == "migration_agent":
+        base_query = base_query.where(VisaCaseAssignment.agent_user_id == current_user.id)
+
+    res = await db.execute(base_query)
     assignments = res.scalars().all()
 
     return [

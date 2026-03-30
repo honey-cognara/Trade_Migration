@@ -12,7 +12,7 @@ Access: candidate role (own profile), admin (read all).
 import uuid
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -26,25 +26,25 @@ router = APIRouter()
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class CandidateProfileCreate(BaseModel):
-    full_name: str
-    nationality: Optional[str] = None
-    country_of_residence: Optional[str] = None
-    trade_category: Optional[str] = None
+    full_name: str = Field(..., min_length=2, max_length=200)
+    nationality: Optional[str] = Field(None, max_length=100)
+    country_of_residence: Optional[str] = Field(None, max_length=100)
+    trade_category: Optional[str] = Field(None, max_length=100)
     is_electrical_worker: bool = False
-    years_experience: Optional[int] = None
+    years_experience: Optional[int] = Field(None, ge=0, le=70)
     languages: Optional[List[dict]] = None
-    profile_summary: Optional[str] = None
+    profile_summary: Optional[str] = Field(None, max_length=2000)
 
 
 class CandidateProfileUpdate(BaseModel):
-    full_name: Optional[str] = None
-    nationality: Optional[str] = None
-    country_of_residence: Optional[str] = None
-    trade_category: Optional[str] = None
+    full_name: Optional[str] = Field(None, min_length=2, max_length=200)
+    nationality: Optional[str] = Field(None, max_length=100)
+    country_of_residence: Optional[str] = Field(None, max_length=100)
+    trade_category: Optional[str] = Field(None, max_length=100)
     is_electrical_worker: Optional[bool] = None
-    years_experience: Optional[int] = None
+    years_experience: Optional[int] = Field(None, ge=0, le=70)
     languages: Optional[List[dict]] = None
-    profile_summary: Optional[str] = None
+    profile_summary: Optional[str] = Field(None, max_length=2000)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -127,13 +127,16 @@ async def update_profile(
     await db.commit()
     await db.refresh(profile)
 
-    # Phase 3: Trigger Electrical Scoring automatically on profile update 
+    # Trigger Electrical Scoring automatically on profile update
     if profile.is_electrical_worker:
         from backend.processors.electrical_scoring import score_electrical_worker
         try:
             await score_electrical_worker(profile.id, db)
         except Exception as e:
-            print(f"Failed to auto-score candidate {profile.id} after profile update: {e}")
+            import logging
+            logging.getLogger(__name__).warning(
+                "Failed to auto-score candidate %s after profile update: %s", profile.id, e
+            )
     else:
         # If they untoggled electrical worker, remove any existing score
         from backend.db.models.models import ElectricalWorkerScore

@@ -1,85 +1,148 @@
+"""
+Documents Router – Applicant document upload, listing, download, and deletion.
+
+Actions:
+  - Upload a document file (candidate)
+  - List documents for a candidate (candidate / employer / admin / migration_agent)
+  - Download a document file  (candidate / employer / admin / migration_agent)
+  - Delete a document record + file (candidate owns it, or admin)
+
+Files are stored on the local filesystem under the ``uploads/`` directory
+managed by ``backend.utils.file_storage``.  No AWS S3 or cloud storage is used.
+"""
+
 import uuid
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+import logging
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from backend.db.setup import get_db
 from backend.api.dependencies.rbac import require_roles
 from backend.db.models.models import ApplicantDocument, CandidateProfile, User
+from backend.utils.file_storage import (
+    build_storage_key,
+    save_upload,
+    delete_file,
+    file_exists,
+    get_absolute_path,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# ── Constants ─────────────────────────────────────────────────────────────────
 
-# ── Schemas ───────────────────────────────────────────────────────────────────
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024          # 10 MB
+ALLOWED_MIME_TYPES = {
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "image/jpeg",
+    "image/png",
+}
+ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png"}
 
-class DocumentUploadRequest(BaseModel):
-    document_group: str
-    document_type: str
-    issuing_country: Optional[str] = None
-    file_name: str
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-class DocumentResponse(BaseModel):
-    id: str
-    candidate_id: str
-    document_group: str
-    document_type: str
-    issuing_country: Optional[str] = None
-    file_name: str
-    s3_key: str
-    uploaded_at: str
+def _validate_upload(file: UploadFile) -> None:
+    """Raise 400/413 for disallowed file types or oversized uploads."""
+    import os
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{ext}' is not allowed. "
+                   f"Allowed types: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+        )
+    if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Content type '{file.content_type}' is not allowed.",
+        )
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/", status_code=201)
-async def simulate_document_upload(
-    payload: DocumentUploadRequest,
+async def upload_document(
+    document_group: str,
+    document_type: str,
+    file: UploadFile = File(...),
+    issuing_country: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles("candidate")),
 ):
     """
-    Simulates a document upload.
-    In AWS, this would return a pre-signed S3 URL.
-    For this MVP, it just registers the metadata in the database.
+    Upload a document file for the authenticated candidate.
+
+    - Accepts PDF, DOC, DOCX, JPG, PNG (max 10 MB).
+    - Stores the file on the local filesystem.
+    - Creates an ``ApplicantDocument`` database record.
+    - Triggers electrical worker re-scoring if applicable.
     """
-    # 1. Ensure user has a candidate profile
+    # 1. Validate file type & size up-front
+    _validate_upload(file)
+
+    # 2. Ensure user has a candidate profile
     result = await db.execute(
         select(CandidateProfile).where(CandidateProfile.user_id == current_user.id)
     )
     profile = result.scalar_one_or_none()
     if not profile:
-        raise HTTPException(status_code=400, detail="Must create a candidate profile before uploading documents.")
+        raise HTTPException(
+            status_code=400,
+            detail="Must create a candidate profile before uploading documents.",
+        )
 
-    # 2. Assign a mock S3 key
-    fake_s3_key = f"uploads/{profile.id}/{uuid.uuid4()}_{payload.file_name}"
+    # 3. Read bytes and enforce size limit
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds the 10 MB size limit ({len(file_bytes)} bytes received).",
+        )
 
-    # 3. Create document record
+    # 4. Persist to local filesystem
+    storage_key = build_storage_key(str(profile.id), file.filename or "upload")
+    try:
+        await save_upload(storage_key, file_bytes)
+    except OSError as exc:
+        logger.error("Failed to save upload for candidate %s: %s", profile.id, exc)
+        raise HTTPException(status_code=500, detail="File could not be saved. Please try again.")
+
+    # 5. Create DB record
     new_doc = ApplicantDocument(
         id=uuid.uuid4(),
         candidate_id=profile.id,
         visa_application_id=None,
-        document_group=payload.document_group,
-        document_type=payload.document_type,
-        issuing_country=payload.issuing_country,
-        file_name=payload.file_name,
-        s3_key=fake_s3_key,
-        uploaded_by_user_id=current_user.id
+        document_group=document_group,
+        document_type=document_type,
+        issuing_country=issuing_country,
+        file_name=file.filename or "upload",
+        s3_key=storage_key,           # re-using column for local path key
+        uploaded_by_user_id=current_user.id,
     )
     db.add(new_doc)
     await db.commit()
     await db.refresh(new_doc)
 
-    # Phase 3: Trigger Electrical Scoring automatically if this is an electrical worker
+    # 6. Trigger electrical scoring if needed
     if profile.is_electrical_worker:
         from backend.processors.electrical_scoring import score_electrical_worker
         try:
             await score_electrical_worker(profile.id, db)
-        except Exception as e:
-            # We log but do not fail the upload
-            print(f"Failed to auto-score candidate {profile.id} after document upload: {e}")
+        except Exception as exc:
+            logger.warning(
+                "Auto-scoring failed for candidate %s after upload: %s", profile.id, exc
+            )
 
     return {
         "id": str(new_doc.id),
@@ -88,9 +151,8 @@ async def simulate_document_upload(
         "document_type": new_doc.document_type,
         "issuing_country": new_doc.issuing_country,
         "file_name": new_doc.file_name,
-        "s3_key": new_doc.s3_key,
+        "storage_key": new_doc.s3_key,
         "uploaded_at": new_doc.uploaded_at.isoformat() if new_doc.uploaded_at else None,
-        "simulated_presigned_url": f"https://mock-s3-bucket.s3.amazonaws.com/{fake_s3_key}?signature=mock123"
     }
 
 
@@ -98,25 +160,29 @@ async def simulate_document_upload(
 async def list_candidate_documents(
     candidate_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate", "employer", "company_admin", "admin", "migration_agent")),
+    current_user: User = Depends(
+        require_roles("candidate", "employer", "company_admin", "admin", "migration_agent")
+    ),
 ):
     """
     List all documents for a specific candidate.
-    Candidates can only view their own. Admins/Employers can view published ones (access control simplified here).
+    Candidates may only view their own documents.
+    Employers, admins, and migration agents may view any candidate's documents.
     """
     try:
         cand_uuid = uuid.UUID(candidate_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
 
-    # If the user is a candidate, ensure they are only querying their own documents
+    # Candidates are restricted to their own documents
     if current_user.role == "candidate":
-        prof_res = await db.execute(select(CandidateProfile).where(CandidateProfile.user_id == current_user.id))
+        prof_res = await db.execute(
+            select(CandidateProfile).where(CandidateProfile.user_id == current_user.id)
+        )
         caller_prof = prof_res.scalar_one_or_none()
         if not caller_prof or caller_prof.id != cand_uuid:
             raise HTTPException(status_code=403, detail="You can only view your own documents.")
 
-    # Fetch documents
     result = await db.execute(
         select(ApplicantDocument)
         .where(ApplicantDocument.candidate_id == cand_uuid)
@@ -132,10 +198,59 @@ async def list_candidate_documents(
             "issuing_country": d.issuing_country,
             "file_name": d.file_name,
             "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
-            "download_url": f"https://mock-s3-bucket.s3.amazonaws.com/{d.s3_key}?signature=view123"
+            "file_available": file_exists(d.s3_key),
         }
         for d in docs
     ]
+
+
+@router.get("/download/{document_id}")
+async def download_document(
+    document_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(
+        require_roles("candidate", "employer", "company_admin", "admin", "migration_agent")
+    ),
+):
+    """
+    Download a specific document by its ID.
+
+    Candidates may only download their own documents.
+    Employers, admins, and migration agents may download any document.
+    """
+    try:
+        doc_uuid = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="document_id must be a valid UUID")
+
+    result = await db.execute(
+        select(ApplicantDocument).where(ApplicantDocument.id == doc_uuid)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    # Candidates are restricted to their own documents
+    if current_user.role == "candidate":
+        prof_res = await db.execute(
+            select(CandidateProfile).where(CandidateProfile.user_id == current_user.id)
+        )
+        profile = prof_res.scalar_one_or_none()
+        if not profile or doc.candidate_id != profile.id:
+            raise HTTPException(status_code=403, detail="Not authorised to download this document.")
+
+    abs_path = get_absolute_path(doc.s3_key)
+    if not file_exists(doc.s3_key):
+        raise HTTPException(
+            status_code=404,
+            detail="File not found on server. It may have been deleted.",
+        )
+
+    return FileResponse(
+        path=abs_path,
+        filename=doc.file_name,
+        media_type="application/octet-stream",
+    )
 
 
 @router.delete("/{document_id}", status_code=204)
@@ -145,36 +260,50 @@ async def delete_document(
     current_user: User = Depends(require_roles("candidate", "admin")),
 ):
     """
-    Delete a document record.
-    Candidates can delete their own; admins can delete any.
+    Delete a document record and its file from disk.
+    Candidates may only delete their own documents.  Admins may delete any.
     """
     try:
         doc_uuid = uuid.UUID(document_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="document_id must be a valid UUID")
 
-    result = await db.execute(select(ApplicantDocument).where(ApplicantDocument.id == doc_uuid))
+    result = await db.execute(
+        select(ApplicantDocument).where(ApplicantDocument.id == doc_uuid)
+    )
     doc = result.scalar_one_or_none()
-    
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
 
     if current_user.role == "candidate":
         if doc.uploaded_by_user_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Not authorized to delete this document.")
+            raise HTTPException(
+                status_code=403, detail="Not authorised to delete this document."
+            )
+
+    # Delete DB record first, then file (avoids orphan records on file-delete failure)
+    storage_key = doc.s3_key
+    candidate_id = doc.candidate_id
 
     await db.delete(doc)
     await db.commit()
-    
-    # Phase 3: Trigger Electrical Scoring recalculation if they delete a document
-    # Fetch profile to see if they are an electrical worker
-    prof_res = await db.execute(select(CandidateProfile).where(CandidateProfile.id == doc.candidate_id))
+
+    # Delete file from disk (non-fatal if already gone)
+    delete_file(storage_key)
+
+    # Re-run electrical scoring after document removal
+    prof_res = await db.execute(
+        select(CandidateProfile).where(CandidateProfile.id == candidate_id)
+    )
     profile = prof_res.scalar_one_or_none()
     if profile and profile.is_electrical_worker:
         from backend.processors.electrical_scoring import score_electrical_worker
         try:
             await score_electrical_worker(profile.id, db)
-        except Exception as e:
-            print(f"Failed to auto-score candidate {profile.id} after document deletion: {e}")
+        except Exception as exc:
+            logger.warning(
+                "Auto-scoring failed for candidate %s after document deletion: %s",
+                profile.id, exc,
+            )
 
     return None

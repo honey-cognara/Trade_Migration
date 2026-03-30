@@ -12,6 +12,7 @@ Scoring Rubric (v1.0) — Total: 100 points
 ─────────────────────────────────────────
 """
 
+import uuid
 from dataclasses import dataclass
 from typing import List
 
@@ -176,3 +177,69 @@ def calculate_electrical_score(input_data: ScoringInput) -> ScoringResult:
             "english": {"score": english_score, "max": 10},
         }
     )
+
+
+async def score_electrical_worker(candidate_id, db) -> None:
+    """
+    Async DB-aware helper: loads candidate data, runs scoring, and upserts the result.
+    Called automatically after profile updates and document uploads/deletions.
+
+    Args:
+        candidate_id: UUID object (or str-castable) of the CandidateProfile.
+        db: AsyncSession instance.
+    """
+    from sqlalchemy import select
+    from backend.db.models.models import (
+        CandidateProfile, ApplicantDocument, ElectricalWorkerScore
+    )
+
+    cand_result = await db.execute(
+        select(CandidateProfile).where(CandidateProfile.id == candidate_id)
+    )
+    candidate = cand_result.scalar_one_or_none()
+    if not candidate or not candidate.is_electrical_worker:
+        return
+
+    docs_result = await db.execute(
+        select(ApplicantDocument.document_type)
+        .where(ApplicantDocument.candidate_id == candidate.id)
+    )
+    doc_types = [row[0] for row in docs_result.fetchall()]
+
+    scoring_input = ScoringInput(
+        candidate_id=str(candidate.id),
+        trade_type=candidate.trade_category or "",
+        years_experience=candidate.years_experience or 0,
+        uploaded_document_types=doc_types,
+        languages=candidate.languages or [],
+    )
+    score_result = calculate_electrical_score(scoring_input)
+
+    existing = await db.execute(
+        select(ElectricalWorkerScore).where(ElectricalWorkerScore.candidate_id == candidate.id)
+    )
+    score_record = existing.scalar_one_or_none()
+
+    if score_record:
+        score_record.trade_type_score = score_result.trade_type_score
+        score_record.experience_score = score_result.experience_score
+        score_record.certification_score = score_result.certification_score
+        score_record.safety_compliance_score = score_result.safety_compliance_score
+        score_record.english_score = score_result.english_score
+        score_record.total_score = score_result.total_score
+        score_record.scoring_version = score_result.scoring_version
+    else:
+        score_record = ElectricalWorkerScore(
+            id=uuid.uuid4(),
+            candidate_id=candidate.id,
+            trade_type_score=score_result.trade_type_score,
+            experience_score=score_result.experience_score,
+            certification_score=score_result.certification_score,
+            safety_compliance_score=score_result.safety_compliance_score,
+            english_score=score_result.english_score,
+            total_score=score_result.total_score,
+            scoring_version=score_result.scoring_version,
+        )
+        db.add(score_record)
+
+    await db.commit()

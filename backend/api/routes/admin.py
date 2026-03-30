@@ -10,7 +10,7 @@ Access: admin role only.
 """
 
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -91,11 +91,13 @@ async def verify_employer(
 
 @router.get("/employers")
 async def list_all_employers(
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_roles("admin")),
 ):
     """Return all employer companies with their verification status."""
-    result = await db.execute(select(EmployerCompany).order_by(EmployerCompany.created_at.desc()))
+    result = await db.execute(select(EmployerCompany).order_by(EmployerCompany.created_at.desc()).limit(limit).offset(offset))
     employers = result.scalars().all()
     rows = [
         {
@@ -113,11 +115,13 @@ async def list_all_employers(
 
 @router.get("/companies")
 async def list_all_companies(
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_roles("admin")),
 ):
     """Alias for /employers — return all employer companies."""
-    result = await db.execute(select(EmployerCompany).order_by(EmployerCompany.created_at.desc()))
+    result = await db.execute(select(EmployerCompany).order_by(EmployerCompany.created_at.desc()).limit(limit).offset(offset))
     employers = result.scalars().all()
     return [
         {
@@ -164,12 +168,14 @@ async def admin_unpublish_candidate(
 
 @router.get("/candidates")
 async def list_all_candidates(
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_roles("admin")),
 ):
     """Return all candidate profiles (published and unpublished)."""
     result = await db.execute(
-        select(CandidateProfile).order_by(CandidateProfile.created_at.desc())
+        select(CandidateProfile).order_by(CandidateProfile.created_at.desc()).limit(limit).offset(offset)
     )
     profiles = result.scalars().all()
     return [
@@ -240,11 +246,13 @@ async def admin_delete_candidate(
 
 @router.get("/users")
 async def list_all_users(
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_roles("admin")),
 ):
     """Return all registered users."""
-    result = await db.execute(select(User).order_by(User.created_at.desc()))
+    result = await db.execute(select(User).order_by(User.created_at.desc()).limit(limit).offset(offset))
     users = result.scalars().all()
     return [
         {

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case
 from backend.db.setup import get_db
+from backend.api.dependencies.rbac import require_roles
 from backend.db.models.models import (
     CandidateProfile, EmployerCompany, VisaApplication,
     ExpressionOfInterest, ElectricalWorkerScore, User
@@ -14,9 +15,14 @@ from backend.db.models.models import (
 
 router = APIRouter()
 
+DASHBOARD_ROLES = ("admin", "company_admin", "migration_agent")
+
 
 @router.get("/stats")
-async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
+async def get_dashboard_stats(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_roles(*DASHBOARD_ROLES)),
+):
     """
     Returns high-level stats for the admin dashboard homepage.
     Used by: Company Admin, Migration Agent, Admin roles.
@@ -91,7 +97,11 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/recent-activity")
-async def get_recent_activity(limit: int = 10, db: AsyncSession = Depends(get_db)):
+async def get_recent_activity(
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_roles(*DASHBOARD_ROLES)),
+):
     """
     Returns recently updated visa applications for the case queue.
     """
@@ -125,7 +135,10 @@ async def get_recent_activity(limit: int = 10, db: AsyncSession = Depends(get_db
 
 
 @router.get("/pending-employers")
-async def get_pending_employers(db: AsyncSession = Depends(get_db)):
+async def get_pending_employers(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_roles(*DASHBOARD_ROLES)),
+):
     """
     Returns employers awaiting admin verification.
     """

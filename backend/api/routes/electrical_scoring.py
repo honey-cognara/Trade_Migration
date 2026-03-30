@@ -28,8 +28,13 @@ router = APIRouter()
 
 async def _run_and_store_score(candidate_id: str, db: AsyncSession) -> dict:
     """Core scoring logic: load candidate data, calculate score, persist result."""
+    try:
+        cand_uuid = uuid.UUID(candidate_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+
     result = await db.execute(
-        select(CandidateProfile).where(CandidateProfile.id == candidate_id)
+        select(CandidateProfile).where(CandidateProfile.id == cand_uuid)
     )
     candidate = result.scalar_one_or_none()
     if not candidate:
@@ -116,8 +121,13 @@ async def get_score(
     _: User = Depends(require_roles("admin", "company_admin", "employer", "migration_agent")),
 ):
     """View the stored electrical worker score and breakdown for a candidate."""
+    try:
+        cand_uuid = uuid.UUID(candidate_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+
     result = await db.execute(
-        select(ElectricalWorkerScore).where(ElectricalWorkerScore.candidate_id == candidate_id)
+        select(ElectricalWorkerScore).where(ElectricalWorkerScore.candidate_id == cand_uuid)
     )
     score_record = result.scalar_one_or_none()
 
@@ -130,7 +140,7 @@ async def get_score(
 
     # Load candidate for breakdown context
     candidate_result = await db.execute(
-        select(CandidateProfile).where(CandidateProfile.id == candidate_id)
+        select(CandidateProfile).where(CandidateProfile.id == cand_uuid)
     )
     candidate = candidate_result.scalar_one_or_none()
 
@@ -156,7 +166,12 @@ async def delete_score(
     _: User = Depends(require_roles("admin")),
 ):
     """Delete a candidate's electrical worker score."""
-    result = await db.execute(select(ElectricalWorkerScore).where(ElectricalWorkerScore.candidate_id == candidate_id))
+    try:
+        cand_uuid = uuid.UUID(candidate_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+
+    result = await db.execute(select(ElectricalWorkerScore).where(ElectricalWorkerScore.candidate_id == cand_uuid))
     score = result.scalar_one_or_none()
     if not score:
         raise HTTPException(status_code=404, detail="Score not found")

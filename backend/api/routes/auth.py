@@ -1,7 +1,9 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from backend.db.setup import get_db
 from backend.utils.auth import hash_password, verify_password, create_access_token
@@ -10,10 +12,12 @@ from backend.db.models.models import User, ConsentRecord
 from backend.api.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, UserResponse
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def register(request: Request, payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(User).where(User.email == payload.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="An account with this email already exists")
@@ -39,6 +43,17 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     await db.commit()
     await db.refresh(new_user)
 
+    # Auto-create a stub candidate profile so the registered name is not lost
+    if new_user.role == "candidate" and payload.name:
+        from backend.db.models.models import CandidateProfile
+        stub_profile = CandidateProfile(
+            id=uuid.uuid4(),
+            user_id=new_user.id,
+            full_name=payload.name.strip(),
+        )
+        db.add(stub_profile)
+        await db.commit()
+
     token = create_access_token({
         "user_id": str(new_user.id),
         "email": new_user.email,
@@ -48,7 +63,8 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
 

@@ -4,9 +4,12 @@ Uses async SQLAlchemy for FastAPI compatibility.
 """
 
 import os
+import logging
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import text
 from dotenv import load_dotenv
+
+_logger = logging.getLogger(__name__)
 
 # Load .env file
 load_dotenv()
@@ -64,24 +67,24 @@ async def init_db():
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             import os as _os
             _os.environ["PGVECTOR_PG_EXTENSION_OK"] = "true"
-            print("[OK] pgvector extension enabled.")
+            _logger.info("pgvector extension enabled.")
             pgvector_ok = True
         except Exception as e:
             import os as _os
             _os.environ["PGVECTOR_PG_EXTENSION_OK"] = "false"
-            print(f"[WARN] pgvector not available: {type(e).__name__}")
-            print("[WARN] RAG embedding endpoints disabled. All other endpoints work fine.")
+            _logger.warning("pgvector not available: %s", type(e).__name__)
+            _logger.warning("RAG embedding endpoints disabled. All other endpoints work fine.")
 
     # Create tables in a fresh transaction to avoid Aborted state
     async with engine.begin() as conn:
         if pgvector_ok:
             try:
                 await conn.run_sync(Base.metadata.create_all)
-                print("[OK] All database tables created.")
+                _logger.info("All database tables created.")
             except Exception as e:
-                print(f"[ERROR] Failed creating all tables: {e}")
+                _logger.error("Failed creating all tables: %s", e)
         else:
-            print("[INFO] Creating non-vector tables only...")
+            _logger.info("Creating non-vector tables only...")
             from backend.db.models.models import (
                 User, CandidateProfile, EmployerCompany, VisaApplication,
                 ApplicantDocument, ExpressionOfInterest, ElectricalWorkerScore,
@@ -100,6 +103,6 @@ async def init_db():
                 try:
                     await conn.run_sync(lambda c, t=table: t.create(c, checkfirst=True))
                 except Exception as te:
-                    print(f"[WARN] Skipped table '{table.name}': {te}")
+                    _logger.warning("Skipped table '%s': %s", table.name, te)
 
-    print("[OK] Database initialisation complete.")
+    _logger.info("Database initialisation complete.")

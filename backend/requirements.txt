@@ -17,27 +17,29 @@ psycopg2-binary>=2.9.9     # Sync driver (for Alembic migrations)
 langchain>=0.3.0
 langchain-openai>=0.2.0
 langchain-community>=0.3.0
+langchain-core>=0.3.0
+langchain-text-splitters>=0.3.0
 openai>=1.50.0
 
-# ── AWS ────────────────────────────────────────────────────────────────────────
-boto3>=1.35.0              # S3 presigned URLs, Cognito, Secrets Manager
-
 # ── Auth / Security ────────────────────────────────────────────────────────────
-python-jose[cryptography]>=3.3.0   # JWT validation (Cognito tokens)
+python-jose[cryptography]>=3.3.0   # JWT signing and validation
 passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.1              # Direct bcrypt dependency (also pulled in by passlib[bcrypt])
 
 # ── Data Validation ────────────────────────────────────────────────────────────
 pydantic>=2.10.0           # 2.10+ has pre-built wheels for Python 3.14
 pydantic-settings>=2.6.0
-python-multipart>=0.0.12   # File upload support
+python-multipart>=0.0.12   # File upload support (multipart/form-data)
 
-# ── Document Processing (RAG background Lambda) ────────────────────────────────
+# ── Document Processing ────────────────────────────────────────────────────────
 pypdf2>=3.0.1              # PDF text extraction
 python-docx>=1.1.2         # Word document extraction
 
 # ── Utilities ──────────────────────────────────────────────────────────────────
 python-dotenv>=1.0.1       # Local .env support
 httpx>=0.27.2              # Async HTTP client for testing
+slowapi>=0.1.9             # Rate limiting middleware
+aiofiles>=23.2.1           # Async file I/O for local document storage
 
 # ── Testing ────────────────────────────────────────────────────────────────────
 pytest>=8.3.3

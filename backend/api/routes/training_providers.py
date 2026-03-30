@@ -83,7 +83,12 @@ async def get_provider(
     _: User = Depends(require_roles("admin", "company_admin", "migration_agent", "employer", "training_provider")),
 ):
     """Return a single active training provider."""
-    result = await db.execute(select(TrainingProvider).where(TrainingProvider.id == provider_id))
+    try:
+        prov_uuid = uuid.UUID(provider_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="provider_id must be a valid UUID")
+
+    result = await db.execute(select(TrainingProvider).where(TrainingProvider.id == prov_uuid))
     provider = result.scalar_one_or_none()
     if not provider:
         raise HTTPException(status_code=404, detail="Training provider not found")
@@ -98,7 +103,12 @@ async def update_provider(
     current_user: User = Depends(require_roles("training_provider", "admin")),
 ):
     """Update training provider profile."""
-    result = await db.execute(select(TrainingProvider).where(TrainingProvider.id == provider_id))
+    try:
+        prov_uuid = uuid.UUID(provider_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="provider_id must be a valid UUID")
+
+    result = await db.execute(select(TrainingProvider).where(TrainingProvider.id == prov_uuid))
     provider = result.scalar_one_or_none()
     if not provider:
         raise HTTPException(status_code=404, detail="Training provider not found")
@@ -118,7 +128,12 @@ async def delete_provider(
     _: User = Depends(require_roles("admin")),
 ):
     """Delete a training provider profile."""
-    result = await db.execute(select(TrainingProvider).where(TrainingProvider.id == provider_id))
+    try:
+        prov_uuid = uuid.UUID(provider_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="provider_id must be a valid UUID")
+
+    result = await db.execute(select(TrainingProvider).where(TrainingProvider.id == prov_uuid))
     provider = result.scalar_one_or_none()
     if not provider:
         raise HTTPException(status_code=404, detail="Training provider not found")
@@ -128,15 +143,20 @@ async def delete_provider(
     return None
 
 
-@router.post("/courses", status_code=201)
+@router.post("/provider/{provider_id}/courses", status_code=201)
 async def create_course(
     provider_id: str,
     payload: CourseCreate,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_roles("training_provider", "admin")),
 ):
-    """Publish a new course (electrical only in MVP)."""
-    result = await db.execute(select(TrainingProvider).where(TrainingProvider.id == provider_id))
+    """Publish a new course under a specific provider."""
+    try:
+        prov_uuid = uuid.UUID(provider_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="provider_id must be a valid UUID")
+
+    result = await db.execute(select(TrainingProvider).where(TrainingProvider.id == prov_uuid))
     provider = result.scalar_one_or_none()
     if not provider:
         raise HTTPException(status_code=404, detail="Training provider not found")
@@ -169,7 +189,12 @@ async def get_course(
     _: User = Depends(require_roles("admin", "company_admin", "migration_agent", "employer", "training_provider", "candidate")),
 ):
     """Return a single course."""
-    result = await db.execute(select(TrainingCourse).where(TrainingCourse.id == course_id))
+    try:
+        course_uuid = uuid.UUID(course_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="course_id must be a valid UUID")
+
+    result = await db.execute(select(TrainingCourse).where(TrainingCourse.id == course_uuid))
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=404, detail="Training course not found")
@@ -184,7 +209,12 @@ async def update_course(
     _: User = Depends(require_roles("training_provider", "admin")),
 ):
     """Update a course."""
-    result = await db.execute(select(TrainingCourse).where(TrainingCourse.id == course_id))
+    try:
+        course_uuid = uuid.UUID(course_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="course_id must be a valid UUID")
+
+    result = await db.execute(select(TrainingCourse).where(TrainingCourse.id == course_uuid))
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=404, detail="Training course not found")
@@ -204,7 +234,12 @@ async def delete_course(
     _: User = Depends(require_roles("training_provider", "admin")),
 ):
     """Delete a course."""
-    result = await db.execute(select(TrainingCourse).where(TrainingCourse.id == course_id))
+    try:
+        course_uuid = uuid.UUID(course_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="course_id must be a valid UUID")
+
+    result = await db.execute(select(TrainingCourse).where(TrainingCourse.id == course_uuid))
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=404, detail="Training course not found")
@@ -222,9 +257,15 @@ async def recommend_course(
     current_user: User = Depends(require_roles("admin", "company_admin", "employer", "migration_agent")),
 ):
     """Link a training course recommendation to a candidate."""
+    try:
+        cand_uuid = uuid.UUID(candidate_id)
+        crs_uuid = uuid.UUID(course_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id and course_id must be valid UUIDs")
+
     recommendation = CandidateRecommendedCourse(
-        id=uuid.uuid4(), candidate_id=candidate_id,
-        course_id=course_id, linked_by_user_id=current_user.id,
+        id=uuid.uuid4(), candidate_id=cand_uuid,
+        course_id=crs_uuid, linked_by_user_id=current_user.id,
     )
     db.add(recommendation)
     await db.commit()
@@ -245,9 +286,14 @@ async def get_candidate_courses(
     _: User = Depends(require_roles("admin", "company_admin", "employer", "migration_agent", "candidate")),
 ):
     """Return all courses recommended to a specific candidate."""
+    try:
+        cand_uuid = uuid.UUID(candidate_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+
     result = await db.execute(
         select(CandidateRecommendedCourse)
-        .where(CandidateRecommendedCourse.candidate_id == candidate_id)
+        .where(CandidateRecommendedCourse.candidate_id == cand_uuid)
         .order_by(CandidateRecommendedCourse.created_at.desc())
     )
     return [
@@ -268,7 +314,12 @@ async def delete_recommendation(
     current_user: User = Depends(require_roles("admin", "company_admin", "employer", "migration_agent")),
 ):
     """Delete a training course recommendation."""
-    result = await db.execute(select(CandidateRecommendedCourse).where(CandidateRecommendedCourse.id == recommendation_id))
+    try:
+        rec_uuid = uuid.UUID(recommendation_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="recommendation_id must be a valid UUID")
+
+    result = await db.execute(select(CandidateRecommendedCourse).where(CandidateRecommendedCourse.id == rec_uuid))
     recommendation = result.scalar_one_or_none()
     if not recommendation:
         raise HTTPException(status_code=404, detail="Recommendation not found")

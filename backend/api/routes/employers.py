@@ -12,7 +12,7 @@ Access: employer role; search/EOI requires verification_status == 'approved'.
 import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
@@ -26,17 +26,17 @@ router = APIRouter()
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class CompanyCreate(BaseModel):
-    company_name: str
-    abn_or_identifier: Optional[str] = None
-    contact_name: Optional[str] = None
-    contact_email: Optional[str] = None
-    industry: Optional[str] = None
+    company_name: str = Field(..., min_length=2, max_length=200)
+    abn_or_identifier: Optional[str] = Field(None, max_length=50)
+    contact_name: Optional[str] = Field(None, max_length=200)
+    contact_email: Optional[str] = Field(None, max_length=254)
+    industry: Optional[str] = Field(None, max_length=100)
 
 
 class EOICreate(BaseModel):
     candidate_id: str
-    job_title: Optional[str] = None
-    message: Optional[str] = None
+    job_title: Optional[str] = Field(None, max_length=200)
+    message: Optional[str] = Field(None, max_length=2000)
     sponsorship_flag: bool = False
 
 
@@ -216,9 +216,14 @@ async def get_candidate_profile(
     """View a single published candidate profile."""
     await _get_approved_company(current_user.id, db)
 
+    try:
+        cand_uuid = uuid.UUID(candidate_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+
     result = await db.execute(
         select(CandidateProfile).where(
-            and_(CandidateProfile.id == candidate_id, CandidateProfile.published == True)
+            and_(CandidateProfile.id == cand_uuid, CandidateProfile.published == True)
         )
     )
     profile = result.scalar_one_or_none()
@@ -248,10 +253,15 @@ async def submit_eoi(
     """Submit an Expression of Interest to a published candidate."""
     company = await _get_approved_company(current_user.id, db)
 
+    try:
+        cand_uuid = uuid.UUID(payload.candidate_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+
     # Verify candidate exists and is published
     result = await db.execute(
         select(CandidateProfile).where(
-            and_(CandidateProfile.id == payload.candidate_id, CandidateProfile.published == True)
+            and_(CandidateProfile.id == cand_uuid, CandidateProfile.published == True)
         )
     )
     candidate = result.scalar_one_or_none()

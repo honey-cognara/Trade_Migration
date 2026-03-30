@@ -11,10 +11,12 @@ Access: admin, company_admin, migration_agent, employer.
 
 import uuid
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from backend.db.setup import get_db
 from backend.api.dependencies.rbac import require_roles
@@ -22,6 +24,7 @@ from backend.db.models.models import TextChunk, CandidateProfile, ApplicantDocum
 from backend.services.rag_service import process_and_store_document, answer_question
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 RAG_ROLES = ("admin", "company_admin", "migration_agent", "employer")
 
@@ -30,14 +33,16 @@ RAG_ROLES = ("admin", "company_admin", "migration_agent", "employer")
 
 class RAGQuery(BaseModel):
     candidate_id: str
-    question: str
-    top_k: int = 5
+    question: str = Field(..., min_length=3, max_length=1000)
+    top_k: int = Field(default=5, ge=1, le=20)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/ask")
+@limiter.limit("30/minute")
 async def ask_question(
+    request: Request,
     payload: RAGQuery,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_roles(*RAG_ROLES)),
@@ -46,7 +51,7 @@ async def ask_question(
     Ask a natural-language question about a specific candidate's uploaded documents.
 
     The system retrieves the most relevant document chunks using pgvector cosine
-    similarity and passes them as context to Bedrock Claude to generate a grounded answer.
+    similarity and passes them as context to OpenAI (gpt-4o-mini) to generate a grounded answer.
 
     - If no documents have been ingested, returns status='no_documents'.
     - In local/dev mode (USE_STUB_EMBEDDINGS=true), returns a stub answer.
@@ -71,10 +76,11 @@ async def ask_question(
             top_k=payload.top_k,
         )
     except Exception as exc:
-        import traceback
+        import logging as _logging
+        _logging.getLogger(__name__).exception("RAG pipeline error for candidate %s", payload.candidate_id)
         raise HTTPException(
             status_code=500,
-            detail=f"RAG error: {type(exc).__name__}: {str(exc)}\n{traceback.format_exc()[-1500:]}"
+            detail="An error occurred while processing your question. Please try again later."
         )
 
 
@@ -92,7 +98,7 @@ async def ingest_document(
     Pipeline:
       1. Extract text from the file (PDF or DOCX).
       2. Split into overlapping chunks.
-      3. Embed each chunk with AWS Bedrock Titan.
+      3. Embed each chunk with OpenAI text-embedding-3-small.
       4. Store TextChunk rows in Postgres / pgvector.
 
     Args (path params):
@@ -126,6 +132,13 @@ async def ingest_document(
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+    if len(file_bytes) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum allowed size is 10 MB."
+        )
+
     try:
         result = await process_and_store_document(
             db=db,
@@ -157,7 +170,7 @@ async def list_text_chunks(
     try:
         cid_uuid = uuid.UUID(candidate_id)
     except ValueError:
-        cid_uuid = None
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
 
     result = await db.execute(
         select(TextChunk)

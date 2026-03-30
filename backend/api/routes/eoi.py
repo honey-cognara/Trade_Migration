@@ -13,7 +13,7 @@ Note: EOI creation is also available via /employers/eoi for convenience.
 import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
@@ -30,13 +30,13 @@ router = APIRouter()
 
 class EOISubmit(BaseModel):
     candidate_id: str
-    job_title: Optional[str] = None
-    message: Optional[str] = None
+    job_title: Optional[str] = Field(None, max_length=200)
+    message: Optional[str] = Field(None, max_length=2000)
     sponsorship_flag: bool = False
 
 class EOIUpdate(BaseModel):
-    job_title: Optional[str] = None
-    message: Optional[str] = None
+    job_title: Optional[str] = Field(None, max_length=200)
+    message: Optional[str] = Field(None, max_length=2000)
     sponsorship_flag: Optional[bool] = None
 
 
@@ -49,6 +49,11 @@ async def submit_eoi(
     current_user: User = Depends(require_roles("employer")),
 ):
     """Submit an Expression of Interest to a published candidate."""
+    try:
+        cand_uuid = uuid.UUID(payload.candidate_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
+
     # Get employer's approved company
     result = await db.execute(
         select(EmployerCompany).where(EmployerCompany.owner_user_id == current_user.id)
@@ -62,7 +67,7 @@ async def submit_eoi(
     # Verify candidate is published
     result = await db.execute(
         select(CandidateProfile).where(
-            and_(CandidateProfile.id == payload.candidate_id, CandidateProfile.published == True)
+            and_(CandidateProfile.id == cand_uuid, CandidateProfile.published == True)
         )
     )
     candidate = result.scalar_one_or_none()
@@ -131,6 +136,11 @@ async def mark_eoi_read(
     current_user: User = Depends(require_roles("candidate")),
 ):
     """Mark an EOI as read."""
+    try:
+        eoi_uuid = uuid.UUID(eoi_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="eoi_id must be a valid UUID")
+
     # Ensure this EOI belongs to the current candidate
     result = await db.execute(
         select(CandidateProfile).where(CandidateProfile.user_id == current_user.id)
@@ -142,7 +152,7 @@ async def mark_eoi_read(
     result = await db.execute(
         select(ExpressionOfInterest).where(
             and_(
-                ExpressionOfInterest.id == eoi_id,
+                ExpressionOfInterest.id == eoi_uuid,
                 ExpressionOfInterest.candidate_id == profile.id,
             )
         )
@@ -163,7 +173,12 @@ async def get_eoi(
     current_user: User = Depends(require_roles("employer", "candidate", "admin", "company_admin")),
 ):
     """Get a specific EOI."""
-    result = await db.execute(select(ExpressionOfInterest).where(ExpressionOfInterest.id == eoi_id))
+    try:
+        eoi_uuid = uuid.UUID(eoi_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="eoi_id must be a valid UUID")
+
+    result = await db.execute(select(ExpressionOfInterest).where(ExpressionOfInterest.id == eoi_uuid))
     eoi = result.scalar_one_or_none()
     if not eoi:
         raise HTTPException(status_code=404, detail="EOI not found")
@@ -199,7 +214,12 @@ async def update_eoi(
     current_user: User = Depends(require_roles("employer")),
 ):
     """Update an EOI before it is read by the candidate."""
-    result = await db.execute(select(ExpressionOfInterest).where(ExpressionOfInterest.id == eoi_id))
+    try:
+        eoi_uuid = uuid.UUID(eoi_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="eoi_id must be a valid UUID")
+
+    result = await db.execute(select(ExpressionOfInterest).where(ExpressionOfInterest.id == eoi_uuid))
     eoi = result.scalar_one_or_none()
     if not eoi:
         raise HTTPException(status_code=404, detail="EOI not found")
@@ -235,7 +255,12 @@ async def delete_eoi(
     current_user: User = Depends(require_roles("employer", "admin")),
 ):
     """Withdraw/Delete an EOI."""
-    result = await db.execute(select(ExpressionOfInterest).where(ExpressionOfInterest.id == eoi_id))
+    try:
+        eoi_uuid = uuid.UUID(eoi_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="eoi_id must be a valid UUID")
+
+    result = await db.execute(select(ExpressionOfInterest).where(ExpressionOfInterest.id == eoi_uuid))
     eoi = result.scalar_one_or_none()
     if not eoi:
         raise HTTPException(status_code=404, detail="EOI not found")

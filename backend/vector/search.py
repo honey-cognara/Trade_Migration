@@ -49,7 +49,7 @@ async def similarity_search(
     Args:
         db:              Async database session.
         candidate_id:    UUID string – restricts search to one candidate's docs.
-        query_embedding: 1536-dim float list from the Bedrock embedder.
+        query_embedding: 1536-dim float list from the OpenAI embedder.
         top_k:           Maximum number of chunks to return.
 
     Returns:

@@ -1,5 +1,6 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator, Field
 from enum import Enum
+import re
 
 
 class UserRole(str, Enum):
@@ -12,14 +13,35 @@ class UserRole(str, Enum):
 
 
 class RegisterRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=120, description="Full name")
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=8, max_length=128)
     role: UserRole
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least one uppercase letter.")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least one lowercase letter.")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least one digit.")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def name_no_script(cls, v: str) -> str:
+        # Basic XSS guard on name field
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Name cannot be blank.")
+        return stripped
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=1, max_length=128)
 
 
 class TokenResponse(BaseModel):

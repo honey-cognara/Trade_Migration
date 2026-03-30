@@ -49,7 +49,7 @@ class User(Base):
         nullable=False
     )
     email = Column(String, unique=True, nullable=False)
-    password_hash = Column(String, nullable=True)   # Local auth — null when using Cognito
+    password_hash = Column(String, nullable=True)   # Hashed with bcrypt; nullable for future SSO/OAuth
     status = Column(String, default="active")
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 
@@ -263,7 +263,7 @@ class TextChunk(Base):
     candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidate_profiles.id"), nullable=False)
     source_document_id = Column(UUID(as_uuid=True), ForeignKey("applicant_documents.id"), nullable=False)
     chunk_text = Column(Text, nullable=False)
-    # 1536-dim vector for Bedrock titan-embed-text-v1; falls back to Text if pgvector missing
+    # 1536-dim vector from OpenAI text-embedding-3-small; falls back to Text if pgvector missing
     embedding = Column(Vector(1536) if PGVECTOR_AVAILABLE else Text, nullable=True)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 

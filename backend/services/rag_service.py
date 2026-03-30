@@ -7,7 +7,7 @@ Two main flows:
               Upload → extract text → chunk → embed → store in pgvector
 
   2. QUERY:   answer_question()
-              Question → embed → similarity search → build context → LLM answer (Bedrock)
+              Question → embed → similarity search → build context → OpenAI LLM answer
 """
 
 import logging
@@ -21,7 +21,7 @@ from backend.vector.search import similarity_search, store_chunks
 
 logger = logging.getLogger(__name__)
 
-# Use stub embeddings when AWS credentials are not configured (local dev)
+# Set USE_STUB_EMBEDDINGS=true in .env to skip real OpenAI calls during local dev/testing
 USE_STUB_EMBEDDINGS = os.getenv("USE_STUB_EMBEDDINGS", "false").lower() == "true"
 
 
@@ -40,7 +40,7 @@ async def process_and_store_document(
     Steps:
       1. Extract text from PDF or DOCX.
       2. Split into overlapping chunks.
-      3. Generate Bedrock embeddings for each chunk.
+      3. Generate OpenAI embeddings for each chunk.
       4. Persist TextChunk rows to Postgres / pgvector.
 
     Args:
@@ -55,7 +55,7 @@ async def process_and_store_document(
 
     Raises:
         ValueError:   Unsupported file type or empty document.
-        RuntimeError: Bedrock unavailable and stub mode is off.
+        RuntimeError: OpenAI unavailable and stub mode is off.
     """
     # Step 1 + 2 — extract and chunk
     logger.info(f"Processing document '{file_name}' for candidate {candidate_id}")
@@ -142,21 +142,23 @@ async def answer_question(
 ) -> dict:
     """
     RAG query pipeline using LangChain LCEL.
+
+    Steps:
+      1. Embed question and retrieve top-K similar chunks from pgvector.
+      2. (MultiQuery) Generate 2 alternative phrasings with LLM, retrieve for each,
+         then deduplicate by chunk_id to broaden coverage.
+      3. Feed combined unique chunks as context to LLM for final answer.
     """
-    from langchain_classic.retrievers.multi_query import MultiQueryRetriever
-    from langchain_classic.retrievers.contextual_compression import ContextualCompressionRetriever
-    from langchain_classic.retrievers.document_compressors import LLMChainExtractor
     from langchain_openai import ChatOpenAI
     from langchain_core.prompts import PromptTemplate
     from langchain_core.output_parsers import StrOutputParser
-    
-    # 1. Base Retriever
+
+    # 1. Base retriever (always needed)
     base_retriever = CandidateRetriever(db=db, candidate_id=candidate_id, top_k=top_k)
-    
-    # 2. Setup LLM
+
+    # 2. Stub mode — skip OpenAI
     llm_model = os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini")
     if USE_STUB_EMBEDDINGS:
-        # Stub response for local dev without API key
         docs = await base_retriever.ainvoke(question)
         return {
             "candidate_id": candidate_id,
@@ -171,27 +173,38 @@ async def answer_question(
                 }
                 for doc in docs
             ],
-            "status": "success" if docs else "no_documents"
+            "status": "success" if docs else "no_documents",
         }
-        
+
     llm = ChatOpenAI(model=llm_model, temperature=0)
-    
-    # 3. MultiQuery Retriever (expands question into 3 variants)
-    multi_retriever = MultiQueryRetriever.from_llm(
-        retriever=base_retriever,
-        llm=llm
+
+    # 3. Multi-query expansion: ask LLM to rephrase the question twice
+    rephrase_prompt = PromptTemplate.from_template(
+        "Generate 2 alternative phrasings of the following question to improve document retrieval. "
+        "Output ONLY the 2 questions, one per line, no numbering or extra text.\n\nQuestion: {question}"
     )
-    
-    # 4. Contextual Compression (extracts only relevant sentences)
-    compressor = LLMChainExtractor.from_llm(llm)
-    compression_retriever = ContextualCompressionRetriever(
-        base_compressor=compressor,
-        base_retriever=multi_retriever
-    )
-    
-    # 5. Retrieve documents
-    retrieved_docs = await compression_retriever.ainvoke(question)
-    
+    rephrase_chain = rephrase_prompt | llm | StrOutputParser()
+    try:
+        rephrasings_raw = await rephrase_chain.ainvoke({"question": question})
+        alt_questions = [q.strip() for q in rephrasings_raw.splitlines() if q.strip()]
+    except Exception:
+        alt_questions = []
+
+    # 4. Retrieve for original + rephrased questions, deduplicate by chunk_id
+    all_queries = [question] + alt_questions[:2]
+    seen_ids: set = set()
+    retrieved_docs = []
+    for q in all_queries:
+        try:
+            docs = await base_retriever.ainvoke(q)
+            for doc in docs:
+                cid = doc.metadata.get("chunk_id")
+                if cid not in seen_ids:
+                    seen_ids.add(cid)
+                    retrieved_docs.append(doc)
+        except Exception as exc:
+            logger.warning(f"Retrieval failed for query '{q}': {exc}")
+
     if not retrieved_docs:
         return {
             "candidate_id": candidate_id,
@@ -201,14 +214,14 @@ async def answer_question(
             "status": "no_documents",
             "message": "No document chunks found for this candidate. Upload and process documents first.",
         }
-        
-    # 6. Build Context & Run LLM
+
+    # 5. Build context and run answer LLM
     context_str = "\n\n---\n\n".join(
-        f"[Source {i+1}] {doc.page_content}"
+        f"[Source {i + 1}] {doc.page_content}"
         for i, doc in enumerate(retrieved_docs)
     )
-    
-    prompt = PromptTemplate.from_template(
+
+    answer_prompt = PromptTemplate.from_template(
         "You are an AI assistant helping migration agents assess international tradespeople.\n"
         "Answer the question below using ONLY the provided context. "
         "If the context does not contain enough information, say so clearly.\n\n"
@@ -216,8 +229,7 @@ async def answer_question(
         "### Question:\n{question}\n\n"
         "### Answer:"
     )
-    
-    chain = prompt | llm | StrOutputParser()
+    chain = answer_prompt | llm | StrOutputParser()
     answer = await chain.ainvoke({"context": context_str, "question": question})
 
     return {

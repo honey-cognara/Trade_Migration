@@ -83,6 +83,6 @@ async def embed_texts(texts: List[str]) -> List[List[float]]:
 def embed_text_stub(text: str) -> List[float]:
     """
     Returns a zero vector of the correct dimension.
-    Use this in tests / local dev when Bedrock is not available.
+    Use this in tests / local dev when USE_STUB_EMBEDDINGS=true.
     """
     return [0.0] * EMBED_DIMENSIONS
