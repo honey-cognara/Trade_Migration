@@ -3,10 +3,12 @@ Employers Router – Employer company management and candidate discovery.
 
 Actions:
   - Create / update employer company profile
+  - Browse approved employer company profiles (candidates & authenticated users)
   - Search and filter published candidates
   - Submit an Expression of Interest (EOI)
 
 Access: employer role; search/EOI requires verification_status == 'approved'.
+  GET /companies and GET /companies/{id} are accessible to all authenticated users.
 """
 
 import uuid
@@ -155,6 +157,72 @@ async def delete_my_company(
     await db.delete(company)
     await db.commit()
     return None
+
+
+# ── Public employer browsing (candidates can view approved employer profiles) ──
+
+@router.get("/companies")
+async def list_approved_companies(
+    industry: Optional[str] = Query(None),
+    limit: int = Query(20, le=100),
+    offset: int = Query(0),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """
+    List all approved employer companies.
+    Accessible to all authenticated users (candidates, migration agents, etc.)
+    so candidates can browse prospective employers.
+    """
+    query = (
+        select(EmployerCompany)
+        .where(EmployerCompany.verification_status == "approved")
+        .order_by(EmployerCompany.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    if industry:
+        query = query.where(EmployerCompany.industry == industry)
+    result = await db.execute(query)
+    companies = result.scalars().all()
+    return [_company_public_dict(c) for c in companies]
+
+
+@router.get("/companies/{company_id}")
+async def get_company_profile(
+    company_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """
+    Get a single approved employer company profile.
+    Accessible to all authenticated users so candidates can view prospective employers.
+    """
+    try:
+        co_uuid = uuid.UUID(company_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="company_id must be a valid UUID")
+
+    result = await db.execute(
+        select(EmployerCompany).where(
+            and_(EmployerCompany.id == co_uuid, EmployerCompany.verification_status == "approved")
+        )
+    )
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Employer company not found or not yet approved")
+    return _company_public_dict(company)
+
+
+def _company_public_dict(c: EmployerCompany) -> dict:
+    return {
+        "id": str(c.id),
+        "company_name": c.company_name,
+        "industry": c.industry,
+        "contact_name": c.contact_name,
+        "contact_email": c.contact_email,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+    }
 
 
 # ── Candidate search ───────────────────────────────────────────────────────────
