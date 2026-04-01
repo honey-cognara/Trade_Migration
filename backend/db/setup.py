@@ -105,4 +105,21 @@ async def init_db():
                 except Exception as te:
                     _logger.warning("Skipped table '%s': %s", table.name, te)
 
+    # Safe column / table migrations for new features
+    async with engine.begin() as conn:
+        for sql in [
+            "ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS work_types JSONB",
+        ]:
+            try:
+                await conn.execute(text(sql))
+            except Exception as e:
+                _logger.warning("Migration skipped (%s): %s", sql[:60], e)
+
+        from backend.db.models.models import CandidateEmployerConsent, VisaShareApproval
+        for tbl in [CandidateEmployerConsent.__table__, VisaShareApproval.__table__]:
+            try:
+                await conn.run_sync(lambda c, t=tbl: t.create(c, checkfirst=True))
+            except Exception as e:
+                _logger.warning("Skipped table '%s': %s", tbl.name, e)
+
     _logger.info("Database initialisation complete.")

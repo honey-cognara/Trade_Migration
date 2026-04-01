@@ -78,16 +78,19 @@ async def create_visa_application(
 
 @router.get("/")
 async def list_visa_applications(
-    status: Optional[str] = Query(None),
-    candidate_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None, description="Filter by status: draft/submitted/under_review/approved/rejected"),
+    candidate_id: Optional[str] = Query(None, description="Filter by candidate UUID"),
+    country_of_application: Optional[str] = Query(None, description="Filter by country"),
     limit: int = Query(20, le=100),
     offset: int = Query(0),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_roles(*VISA_ROLES)),
 ):
-    """List all visa applications, with optional filters."""
+    """List visa applications with optional filters (status, candidate, country)."""
     query = select(VisaApplication).order_by(VisaApplication.updated_at.desc())
     if status:
+        if status not in ALLOWED_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Allowed: {', '.join(ALLOWED_STATUSES)}")
         query = query.where(VisaApplication.status == status)
     if candidate_id:
         try:
@@ -95,6 +98,8 @@ async def list_visa_applications(
         except ValueError:
             raise HTTPException(status_code=422, detail="candidate_id must be a valid UUID")
         query = query.where(VisaApplication.candidate_id == cand_uuid)
+    if country_of_application:
+        query = query.where(VisaApplication.country_of_application.ilike(f"%{country_of_application}%"))
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)
     return [_application_to_dict(a) for a in result.scalars().all()]

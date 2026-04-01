@@ -67,9 +67,8 @@ async def create_provider(
 @router.get("/provider")
 async def get_all_providers(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_roles("admin", "company_admin", "migration_agent", "employer", "training_provider")),
 ):
-    """Return all active training providers."""
+    """Return all active training providers (public)."""
     result = await db.execute(
         select(TrainingProvider).where(TrainingProvider.status == "active").order_by(TrainingProvider.created_at.desc())
     )
@@ -80,7 +79,6 @@ async def get_all_providers(
 async def get_provider(
     provider_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_roles("admin", "company_admin", "migration_agent", "employer", "training_provider")),
 ):
     """Return a single active training provider."""
     try:
@@ -172,9 +170,8 @@ async def create_course(
 async def list_courses(
     trade_category: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_roles("admin", "company_admin", "migration_agent", "employer", "training_provider", "candidate")),
 ):
-    """Return all published courses, optionally filtered by trade category."""
+    """Return all published courses, optionally filtered by trade category (public)."""
     query = select(TrainingCourse).order_by(TrainingCourse.created_at.desc())
     if trade_category:
         query = query.where(TrainingCourse.trade_category == trade_category)
@@ -186,7 +183,6 @@ async def list_courses(
 async def get_course(
     course_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_roles("admin", "company_admin", "migration_agent", "employer", "training_provider", "candidate")),
 ):
     """Return a single course."""
     try:
@@ -262,6 +258,15 @@ async def recommend_course(
         crs_uuid = uuid.UUID(course_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="candidate_id and course_id must be valid UUIDs")
+
+    existing = await db.execute(
+        select(CandidateRecommendedCourse).where(
+            CandidateRecommendedCourse.candidate_id == cand_uuid,
+            CandidateRecommendedCourse.course_id == crs_uuid,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="This course is already recommended for this candidate.")
 
     recommendation = CandidateRecommendedCourse(
         id=uuid.uuid4(), candidate_id=cand_uuid,

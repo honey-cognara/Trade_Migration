@@ -75,6 +75,7 @@ class CandidateProfile(Base):
     is_electrical_worker = Column(Boolean, default=False)
     years_experience = Column(Integer)
     languages = Column(JSONB)                 # e.g. [{"name": "English", "level": "B2"}]
+    work_types = Column(JSONB, nullable=True)  # e.g. ["domestic", "industrial", "commercial", "powerlines"]
     profile_summary = Column(Text)
     published = Column(Boolean, default=False)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
@@ -87,6 +88,8 @@ class CandidateProfile(Base):
     electrical_score = relationship("ElectricalWorkerScore", back_populates="candidate", uselist=False)
     text_chunks = relationship("TextChunk", back_populates="candidate")
     recommended_courses = relationship("CandidateRecommendedCourse", back_populates="candidate")
+    employer_consents = relationship("CandidateEmployerConsent", back_populates="candidate")
+    visa_share_approvals = relationship("VisaShareApproval", back_populates="candidate")
 
 
 # ─────────────────────────────────────────────
@@ -328,3 +331,51 @@ class CandidateRecommendedCourse(Base):
     # Relationships
     candidate = relationship("CandidateProfile", back_populates="recommended_courses")
     course = relationship("TrainingCourse", back_populates="candidate_recommendations")
+
+
+# ─────────────────────────────────────────────
+# CANDIDATE EMPLOYER CONSENT
+# ─────────────────────────────────────────────
+class CandidateEmployerConsent(Base):
+    """
+    Tracks explicit candidate consent for an employer to view their full profile.
+    Candidates grant/revoke access per employer company.
+    """
+    __tablename__ = "candidate_employer_consents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidate_profiles.id"), nullable=False)
+    employer_company_id = Column(UUID(as_uuid=True), ForeignKey("employer_companies.id"), nullable=False)
+    is_active = Column(Boolean, default=True)
+    granted_at = Column(TIMESTAMP, default=datetime.utcnow)
+    revoked_at = Column(TIMESTAMP, nullable=True)
+
+    # Relationships
+    candidate = relationship("CandidateProfile", back_populates="employer_consents")
+    employer_company = relationship("EmployerCompany")
+
+
+# ─────────────────────────────────────────────
+# VISA SHARE APPROVAL
+# ─────────────────────────────────────────────
+class VisaShareApproval(Base):
+    """
+    Candidate explicitly approves sharing their visa/migration documents
+    with a specific employer as a compiled PDF export.
+    Only valid when an EOI relationship already exists between the parties.
+    """
+    __tablename__ = "visa_share_approvals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidate_profiles.id"), nullable=False)
+    employer_company_id = Column(UUID(as_uuid=True), ForeignKey("employer_companies.id"), nullable=False)
+    eoi_id = Column(UUID(as_uuid=True), ForeignKey("expressions_of_interest.id"), nullable=False)
+    is_active = Column(Boolean, default=True)
+    approved_at = Column(TIMESTAMP, default=datetime.utcnow)
+    revoked_at = Column(TIMESTAMP, nullable=True)
+    notes = Column(Text, nullable=True)
+
+    # Relationships
+    candidate = relationship("CandidateProfile", back_populates="visa_share_approvals")
+    employer_company = relationship("EmployerCompany")
+    eoi = relationship("ExpressionOfInterest")

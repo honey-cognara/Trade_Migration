@@ -15,7 +15,7 @@ import uuid
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -71,10 +71,10 @@ def _validate_upload(file: UploadFile) -> None:
 
 @router.post("/", status_code=201)
 async def upload_document(
-    document_group: str,
-    document_type: str,
     file: UploadFile = File(...),
-    issuing_country: Optional[str] = None,
+    document_group: str = Form(...),
+    document_type: str = Form(...),
+    issuing_country: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles("candidate")),
 ):

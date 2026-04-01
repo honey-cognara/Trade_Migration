@@ -16,7 +16,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-@limiter.limit("5/minute")
+@limiter.limit("60/minute")
 async def register(request: Request, payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(User).where(User.email == payload.email))
     if existing.scalar_one_or_none():
@@ -63,7 +63,7 @@ async def register(request: Request, payload: RegisterRequest, db: AsyncSession 
 
 
 @router.post("/login", response_model=TokenResponse)
-@limiter.limit("10/minute")
+@limiter.limit("60/minute")
 async def login(request: Request, payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()

@@ -158,6 +158,7 @@ async def get_case_details(
         "status": visa_case.status,
         "country_of_application": visa_case.country_of_application,
         "notes": visa_case.notes,
+        "document_count": len(docs),
         "documents_uploaded_count": len(docs),
         "documents": [
             {

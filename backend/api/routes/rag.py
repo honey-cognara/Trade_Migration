@@ -26,7 +26,7 @@ from backend.services.rag_service import process_and_store_document, answer_ques
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
-RAG_ROLES = ("admin", "company_admin", "migration_agent", "employer")
+RAG_ROLES = ("admin", "company_admin", "migration_agent")
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────

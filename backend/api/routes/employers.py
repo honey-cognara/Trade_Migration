@@ -165,12 +165,13 @@ async def search_candidates(
     country_of_residence: Optional[str] = Query(None),
     min_years_experience: Optional[int] = Query(None),
     is_electrical_worker: Optional[bool] = Query(None),
+    work_type: Optional[str] = Query(None, description="Filter by work type: domestic/industrial/commercial/powerlines"),
     limit: int = Query(20, le=100),
     offset: int = Query(0),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles("employer")),
 ):
-    """Search published candidate profiles with optional filters."""
+    """Search published candidate profiles. Returns basic info only (full profile requires candidate consent)."""
     await _get_approved_company(current_user.id, db)
 
     filters = [CandidateProfile.published == True]
@@ -182,6 +183,13 @@ async def search_candidates(
         filters.append(CandidateProfile.years_experience >= min_years_experience)
     if is_electrical_worker is not None:
         filters.append(CandidateProfile.is_electrical_worker == is_electrical_worker)
+    if work_type:
+        # JSONB array contains the given work type value
+        from sqlalchemy import cast
+        from sqlalchemy.dialects.postgresql import JSONB
+        filters.append(
+            CandidateProfile.work_types.cast(JSONB).contains([work_type])
+        )
 
     result = await db.execute(
         select(CandidateProfile)
@@ -191,6 +199,7 @@ async def search_candidates(
         .offset(offset)
     )
     profiles = result.scalars().all()
+    # Return basic info only — full profile access requires candidate's explicit consent
     return [
         {
             "id": str(p.id),
@@ -200,8 +209,7 @@ async def search_candidates(
             "trade_category": p.trade_category,
             "is_electrical_worker": p.is_electrical_worker,
             "years_experience": p.years_experience,
-            "languages": p.languages,
-            "profile_summary": p.profile_summary,
+            "work_types": p.work_types,
         }
         for p in profiles
     ]
@@ -213,8 +221,12 @@ async def get_candidate_profile(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles("employer")),
 ):
-    """View a single published candidate profile."""
-    await _get_approved_company(current_user.id, db)
+    """
+    View a candidate's full profile.
+    Requires the candidate to have granted consent to this employer company.
+    Basic search results are available without consent via GET /employers/candidates.
+    """
+    company = await _get_approved_company(current_user.id, db)
 
     try:
         cand_uuid = uuid.UUID(candidate_id)
@@ -229,6 +241,29 @@ async def get_candidate_profile(
     profile = result.scalar_one_or_none()
     if not profile:
         raise HTTPException(status_code=404, detail="Candidate not found or profile is not published")
+
+    # Check candidate has granted consent for this employer to view full profile
+    from backend.db.models.models import CandidateEmployerConsent
+    consent_res = await db.execute(
+        select(CandidateEmployerConsent).where(
+            and_(
+                CandidateEmployerConsent.candidate_id == profile.id,
+                CandidateEmployerConsent.employer_company_id == company.id,
+                CandidateEmployerConsent.is_active == True,
+            )
+        )
+    )
+    consent = consent_res.scalar_one_or_none()
+    if not consent:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "The candidate has not yet granted you access to their full profile. "
+                "You can view basic info in search results. "
+                "The candidate must grant consent via their profile settings."
+            )
+        )
+
     return {
         "id": str(profile.id),
         "full_name": profile.full_name,
@@ -238,7 +273,9 @@ async def get_candidate_profile(
         "is_electrical_worker": profile.is_electrical_worker,
         "years_experience": profile.years_experience,
         "languages": profile.languages,
+        "work_types": profile.work_types,
         "profile_summary": profile.profile_summary,
+        "consent_granted": True,
     }
 
 
