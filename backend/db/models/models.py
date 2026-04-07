@@ -50,7 +50,10 @@ class User(Base):
     )
     email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=True)   # Hashed with bcrypt; nullable for future SSO/OAuth
-    status = Column(String, default="active")
+    status = Column(String, default="active")       # "pending" until email verified, then "active"
+    email_verified = Column(Boolean, default=False, nullable=False)
+    otp_code = Column(String(6), nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 
     # Relationships

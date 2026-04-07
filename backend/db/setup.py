@@ -109,6 +109,9 @@ async def init_db():
     async with engine.begin() as conn:
         for sql in [
             "ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS work_types JSONB",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_code VARCHAR(6)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP",
         ]:
             try:
                 await conn.execute(text(sql))
