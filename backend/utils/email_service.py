@@ -4,19 +4,24 @@ Sends 6-digit OTP codes for email verification.
 """
 
 import os
+import asyncio
 import smtplib
 import random
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+# Load .env from project root regardless of working directory
+_ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(dotenv_path=_ENV_PATH, override=True)
 
 _logger = logging.getLogger(__name__)
 
-EMAIL_USER = os.getenv("EMAIL_USER", "")
-EMAIL_PASS = os.getenv("EMAIL_PASS", "")
+
+def _get_credentials():
+    return os.getenv("EMAIL_USER", ""), os.getenv("EMAIL_PASS", "")
 
 
 def generate_otp() -> str:
@@ -54,17 +59,23 @@ async def send_otp_email(to_email: str, otp: str) -> bool:
     </div>
     """
 
+    email_user, email_pass = _get_credentials()
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = EMAIL_USER
+    msg["From"] = email_user
     msg["To"] = to_email
     msg.attach(MIMEText(html_body, "html"))
 
-    try:
+    def _send():
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
-            server.login(EMAIL_USER, EMAIL_PASS)
+            server.login(email_user, email_pass)
             server.send_message(msg)
+
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _send)
         _logger.info("OTP email sent to %s", to_email)
         return True
     except Exception as e:
