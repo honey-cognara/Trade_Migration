@@ -54,6 +54,8 @@ class User(Base):
     email_verified = Column(Boolean, default=False, nullable=False)
     otp_code = Column(String(6), nullable=True)
     otp_expires_at = Column(DateTime, nullable=True)
+    reset_token = Column(String(64), nullable=True)          # short-lived token issued after OTP verified
+    reset_token_expires_at = Column(DateTime, nullable=True)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 
     # Relationships

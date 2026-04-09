@@ -1,4 +1,5 @@
 import uuid
+import secrets
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,9 +11,12 @@ from backend.db.setup import get_db
 from backend.utils.auth import hash_password, verify_password, create_access_token
 from backend.api.dependencies.rbac import get_current_user
 from backend.db.models.models import User, ConsentRecord
-from backend.api.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, UserResponse
+from backend.api.schemas.auth import (
+    RegisterRequest, LoginRequest, TokenResponse, UserResponse,
+    ForgotPasswordRequest, VerifyResetOtpRequest, ResetPasswordRequest,
+)
 from backend.utils.email_validation import validate_email_domain
-from backend.utils.email_service import generate_otp, send_otp_email
+from backend.utils.email_service import generate_otp, send_otp_email, send_password_reset_email
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
@@ -166,6 +170,103 @@ async def login(request: Request, payload: LoginRequest, db: AsyncSession = Depe
 
     token = create_access_token({"user_id": str(user.id), "email": user.email, "role": user.role})
     return TokenResponse(access_token=token, role=user.role, user_id=str(user.id), email=user.email)
+
+
+RESET_OTP_EXPIRY_MINUTES = 2
+RESET_TOKEN_EXPIRY_MINUTES = 15  # user has 15 min to submit new password after OTP verified
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, payload: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Step 1 of password reset.
+    Sends a 6-digit OTP to the registered email.
+    Always returns the same generic message to avoid email enumeration.
+    """
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+
+    if user and user.email_verified:
+        otp = generate_otp()
+        user.otp_code = otp
+        user.otp_expires_at = datetime.utcnow() + timedelta(minutes=RESET_OTP_EXPIRY_MINUTES)
+        # clear any old reset token
+        user.reset_token = None
+        user.reset_token_expires_at = None
+        await db.commit()
+        await send_password_reset_email(payload.email, otp)
+
+    return {
+        "message": "If that email is registered, a password-reset code has been sent. Check your inbox."
+    }
+
+
+@router.post("/verify-reset-otp")
+async def verify_reset_otp(payload: VerifyResetOtpRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Step 2 of password reset.
+    Validates the 6-digit OTP and issues a short-lived reset token (valid 15 min).
+    The client must include this token in the /reset-password call.
+    """
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP.")
+
+    if not user.otp_code or not user.otp_expires_at:
+        raise HTTPException(status_code=400, detail="No reset code found. Please request a new one via /auth/forgot-password.")
+
+    if datetime.utcnow() > user.otp_expires_at:
+        raise HTTPException(status_code=400, detail="Reset code has expired. Please request a new one via /auth/forgot-password.")
+
+    if user.otp_code != payload.otp:
+        raise HTTPException(status_code=400, detail="Invalid reset code. Please check the code and try again.")
+
+    # OTP correct — issue a one-time reset token
+    reset_token = secrets.token_urlsafe(32)
+    user.reset_token = reset_token
+    user.reset_token_expires_at = datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
+    user.otp_code = None
+    user.otp_expires_at = None
+    await db.commit()
+
+    return {
+        "message": "OTP verified. Use the reset_token to set your new password via /auth/reset-password.",
+        "reset_token": reset_token,
+    }
+
+
+@router.post("/reset-password")
+async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Step 3 of password reset.
+    Accepts the reset_token from verify-reset-otp and sets the new password.
+    """
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.reset_token:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
+
+    if user.reset_token != payload.reset_token:
+        raise HTTPException(status_code=400, detail="Invalid reset token.")
+
+    if not user.reset_token_expires_at or datetime.utcnow() > user.reset_token_expires_at:
+        # Clean up expired token
+        user.reset_token = None
+        user.reset_token_expires_at = None
+        await db.commit()
+        raise HTTPException(status_code=400, detail="Reset token has expired. Please start over with /auth/forgot-password.")
+
+    # All checks passed — update password
+    user.password_hash = hash_password(payload.new_password)
+    user.reset_token = None
+    user.reset_token_expires_at = None
+    await db.commit()
+
+    return {"message": "Password reset successfully. You can now log in with your new password."}
 
 
 @router.get("/me", response_model=UserResponse)
