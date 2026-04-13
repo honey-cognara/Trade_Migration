@@ -180,25 +180,13 @@ async def list_text_chunks(
     )
     chunks = result.scalars().all()
 
-    if not chunks:
-        return {
-            "candidate_id": candidate_id,
-            "chunk_count": 0,
-            "chunks": [],
-            "message": "No chunks found. Use POST /rag/ingest/{candidate_id}/{document_id} to ingest a document.",
+    return [
+        {
+            "id": str(c.id),
+            "source_document_id": str(c.source_document_id),
+            "chunk_text": c.chunk_text[:300] + "..." if len(c.chunk_text) > 300 else c.chunk_text,
+            "has_embedding": c.embedding is not None,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
         }
-
-    return {
-        "candidate_id": candidate_id,
-        "chunk_count": len(chunks),
-        "chunks": [
-            {
-                "id": str(c.id),
-                "source_document_id": str(c.source_document_id),
-                "chunk_text": c.chunk_text[:300] + "..." if len(c.chunk_text) > 300 else c.chunk_text,
-                "has_embedding": c.embedding is not None,
-                "created_at": c.created_at.isoformat() if c.created_at else None,
-            }
-            for c in chunks
-        ],
-    }
+        for c in chunks
+    ]

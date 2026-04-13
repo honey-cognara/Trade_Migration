@@ -18,11 +18,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_
 
 from backend.db.setup import get_db
 from backend.api.dependencies.rbac import require_roles
-from backend.db.models.models import ApplicantDocument, CandidateProfile, User
+from backend.db.models.models import ApplicantDocument, CandidateProfile, User, CandidateEmployerConsent, EmployerCompany
 from backend.utils.file_storage import (
     build_storage_key,
     save_upload,
@@ -182,6 +182,29 @@ async def list_candidate_documents(
         caller_prof = prof_res.scalar_one_or_none()
         if not caller_prof or caller_prof.id != cand_uuid:
             raise HTTPException(status_code=403, detail="You can only view your own documents.")
+
+    # Employers must have active consent from the candidate
+    if current_user.role == "employer":
+        company_res = await db.execute(
+            select(EmployerCompany).where(EmployerCompany.owner_user_id == current_user.id)
+        )
+        company = company_res.scalar_one_or_none()
+        if not company:
+            raise HTTPException(status_code=403, detail="No employer company profile found.")
+        consent_res = await db.execute(
+            select(CandidateEmployerConsent).where(
+                and_(
+                    CandidateEmployerConsent.candidate_id == cand_uuid,
+                    CandidateEmployerConsent.employer_company_id == company.id,
+                    CandidateEmployerConsent.is_active == True,
+                )
+            )
+        )
+        if not consent_res.scalar_one_or_none():
+            raise HTTPException(
+                status_code=403,
+                detail="The candidate has not granted you access to view their documents.",
+            )
 
     result = await db.execute(
         select(ApplicantDocument)
