@@ -1,64 +1,52 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
-import { roleDashboard } from '../components/ProtectedRoute'
 
 export function SignupPage() {
-  const { register } = useAuth()
-  const navigate = useNavigate()
-
   const [form, setForm] = useState({
     name: '',
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'candidate',
+    role: 'tradie',
   })
   const [errors, setErrors] = useState({})
-  const [serverError, setServerError] = useState('')
-  const [submitting, setSubmitting] = useState(false)
 
   const handleChange = (event) => {
     const { name, value } = event.target
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
-  const validate = () => {
+  const handleSubmit = (event) => {
+    event.preventDefault()
     const nextErrors = {}
-    if (!form.name) nextErrors.name = 'Full name is required.'
+
+    if (!form.name) {
+      nextErrors.name = 'Full name is required.'
+    }
+
     if (!form.email) {
       nextErrors.email = 'Email is required.'
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
       nextErrors.email = 'Enter a valid email address.'
     }
+
     if (!form.password) {
       nextErrors.password = 'Password is required.'
     } else if (form.password.length < 8) {
       nextErrors.password = 'Password must be at least 8 characters.'
     }
+
     if (!form.confirmPassword) {
       nextErrors.confirmPassword = 'Please confirm your password.'
     } else if (form.confirmPassword !== form.password) {
       nextErrors.confirmPassword = 'Passwords do not match.'
     }
-    return nextErrors
-  }
 
-  const handleSubmit = async (event) => {
-    event.preventDefault()
-    setServerError('')
-    const nextErrors = validate()
     setErrors(nextErrors)
-    if (Object.keys(nextErrors).length > 0) return
 
-    setSubmitting(true)
-    try {
-      const role = await register(form.name, form.email, form.password, form.role)
-      navigate(roleDashboard(role), { replace: true })
-    } catch (err) {
-      setServerError(err.message || 'Registration failed. Please try again.')
-    } finally {
-      setSubmitting(false)
+    if (Object.keys(nextErrors).length === 0) {
+      // Replace with real sign-up request when backend is ready
+      // eslint-disable-next-line no-console
+      console.log('Signup form submitted', form)
     }
   }
 
@@ -77,13 +65,6 @@ export function SignupPage() {
         <div className="tc-grid-2">
           <div className="tc-card">
             <h2>Sign up</h2>
-
-            {serverError && (
-              <div className="tc-alert tc-alert-error" style={{ marginBottom: '1rem', color: 'red' }}>
-                {serverError}
-              </div>
-            )}
-
             <form className="tc-form" onSubmit={handleSubmit} noValidate>
               <div className="tc-form-row">
                 <label>
@@ -151,29 +132,17 @@ export function SignupPage() {
                     value={form.role}
                     onChange={handleChange}
                   >
-                    <option value="candidate">An overseas electrician / tradie</option>
+                    <option value="tradie">An overseas electrician / tradie</option>
                     <option value="employer">An Australian employer</option>
-                    <option value="training_provider">A training provider</option>
+                    <option value="provider">A training provider</option>
                   </select>
                 </label>
               </div>
-              <button
-                type="submit"
-                className="tc-btn tc-btn-primary"
-                disabled={submitting}
-              >
-                {submitting ? 'Creating account…' : 'Create account'}
+              <button type="submit" className="tc-btn tc-btn-primary">
+                Create account
               </button>
             </form>
-
-            <p style={{ marginTop: '1rem' }}>
-              Already have an account?{' '}
-              <Link to="/login" className="tc-link">
-                Log in
-              </Link>
-            </p>
           </div>
-
           <div className="tc-card tc-card-ghost">
             <h2>What you can save</h2>
             <ul>
@@ -187,3 +156,4 @@ export function SignupPage() {
     </div>
   )
 }
+
