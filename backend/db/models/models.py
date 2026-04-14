@@ -49,8 +49,12 @@ class User(Base):
         nullable=False
     )
     email = Column(String, unique=True, nullable=False)
+    full_name = Column(String, nullable=True)
     password_hash = Column(String, nullable=True)   # Local auth — null when using Cognito
-    status = Column(String, default="active")
+    status = Column(String, default="pending")       # pending until OTP verified
+    email_verified = Column(Boolean, default=False)
+    otp_code = Column(String, nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 
     # Relationships

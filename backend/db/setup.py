@@ -102,4 +102,21 @@ async def init_db():
                 except Exception as te:
                     print(f"[WARN] Skipped table '{table.name}': {te}")
 
+    # ── Add new columns if they don't exist (safe for existing DBs) ──────────
+    migrations = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_code VARCHAR",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP",
+        # Update existing active users so they are not locked out
+        "UPDATE users SET email_verified = TRUE WHERE status = 'active' AND email_verified IS NULL",
+        "UPDATE users SET email_verified = TRUE WHERE status = 'active' AND email_verified = FALSE",
+    ]
+    async with engine.begin() as conn:
+        for sql in migrations:
+            try:
+                await conn.execute(text(sql))
+            except Exception as me:
+                print(f"[WARN] Migration skipped: {me}")
+
     print("[OK] Database initialisation complete.")

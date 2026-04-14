@@ -36,7 +36,7 @@ export function ForgotPasswordPage() {
     setLoading(true); setError('')
     try {
       const data = await verifyResetOtp({ email, otp_code: otp })
-      setResetToken(data.reset_token)
+      setResetToken(data.access_token)
       setStep(3)
     } catch (err) {
       setError(err.detail || 'Invalid or expired code.')
