@@ -1,3 +1,4 @@
+/* Legacy styles kept for backward compat — primary styles are in index.css */
 .tc-app {
   min-height: 100vh;
   display: flex;

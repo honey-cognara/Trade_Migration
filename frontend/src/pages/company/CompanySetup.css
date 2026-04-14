@@ -1,0 +1,243 @@
+/* ═══════════════════════════════════════════════════════════
+   Company Setup — same sage-green / light-mint design system
+   ═══════════════════════════════════════════════════════════ */
+
+.cs-page {
+  min-height: 100vh;
+  background: #f4f9f4;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ─── Decorative blobs ───────────────────────────────────────── */
+.cs-blob { position: absolute; border-radius: 50%; pointer-events: none; z-index: 0; }
+.cs-blob-tl {
+  width: 280px; height: 280px;
+  background: radial-gradient(circle, #c8e6c0 0%, #e8f5e8 60%, transparent 100%);
+  top: -80px; left: -80px; opacity: 0.9;
+}
+.cs-blob-br {
+  width: 240px; height: 240px;
+  background: radial-gradient(circle, #d4edba 0%, #e8f5e0 60%, transparent 100%);
+  bottom: -60px; right: -60px; opacity: 0.8;
+}
+.cs-circle {
+  position: absolute; border-radius: 50%;
+  border-color: #e87b3a; border-style: solid;
+  pointer-events: none; z-index: 0;
+}
+.cs-dot {
+  position: absolute; width: 6px; height: 6px; border-radius: 50%;
+  background: #e87b3a; pointer-events: none; z-index: 0; opacity: 0.5;
+}
+
+/* ─── Layout ─────────────────────────────────────────────────── */
+.cs-layout {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 1020px;
+  display: grid;
+  grid-template-columns: 185px 1fr 240px;
+  gap: 2rem;
+  align-items: center;
+}
+
+/* ─── Sidebar ────────────────────────────────────────────────── */
+.cs-sidebar { display: flex; flex-direction: column; gap: 0; padding-top: 1rem; }
+.cs-sidebar-item { position: relative; display: flex; flex-direction: column; }
+.cs-sidebar-row  { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.2rem 0 0.75rem; }
+.cs-connector      { width: 2px; height: 24px; background: #c8ddc8; margin-left: 11px; }
+.cs-connector-done { background: #6b8f5e; }
+
+.cs-step-dot {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 2px solid #c8ddc8; background: #fff;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 2px;
+}
+.cs-step-dot.active { border-color: #5a8a4a; }
+.cs-step-dot.done   { border-color: #5a8a4a; background: #5a8a4a; }
+.cs-step-inner        { width: 8px; height: 8px; border-radius: 50%; background: #c8ddc8; }
+.cs-step-inner.active { background: #5a8a4a; }
+
+.cs-step-label        { font-size: 0.9rem; font-weight: 700; color: #b0c8b0; line-height: 1.2; }
+.cs-step-label.active { color: #3d6b3d; }
+.cs-step-sub          { font-size: 0.75rem; color: #9ab89a; margin-top: 0.1rem; }
+
+/* ─── Card ───────────────────────────────────────────────────── */
+.cs-card {
+  background: #e8f4e8; border-radius: 16px;
+  padding: 2rem 1.75rem 1.5rem;
+  box-shadow: 0 4px 24px rgba(100,140,100,0.12);
+}
+.cs-card-title {
+  font-size: 1.4rem; font-weight: 800; color: #1a2e1a;
+  margin: 0 0 0.4rem; font-family: 'Georgia', serif;
+}
+.cs-card-sub {
+  font-size: 0.85rem; color: #5a7a5a;
+  margin: 0 0 1.4rem; line-height: 1.5;
+}
+
+/* ─── Fields ─────────────────────────────────────────────────── */
+.cs-field { margin-bottom: 1.1rem; position: relative; }
+.cs-field label {
+  display: block; font-size: 0.82rem; font-weight: 600;
+  color: #3d5c3d; margin-bottom: 0.4rem;
+}
+.cs-input {
+  width: 100%; background: #fff; border: 1.5px solid #d0e8d0;
+  border-radius: 8px; padding: 0.7rem 0.9rem;
+  font-size: 0.88rem; color: #2a3a2a; outline: none;
+  transition: border-color 0.15s; box-sizing: border-box;
+}
+.cs-input::placeholder { color: #b0c8b0; }
+.cs-input:focus         { border-color: #6b8f5e; }
+.cs-input-err           { border-color: #c0392b !important; }
+.cs-err { font-size: 0.75rem; color: #c0392b; margin-top: 0.25rem; display: block; }
+
+.cs-textarea  { resize: vertical; min-height: 90px; }
+.cs-select-wrap { position: relative; }
+.cs-select    { appearance: none; cursor: pointer; padding-right: 2.2rem; }
+.cs-select-arrow {
+  position: absolute; right: 0.85rem; top: 50%; transform: translateY(-50%);
+  pointer-events: none; color: #6b8f5e; font-size: 0.8rem;
+}
+
+/* ─── Skill tag input ────────────────────────────────────────── */
+.cs-skill-box {
+  background: #fff; border: 1.5px solid #d0e8d0; border-radius: 8px;
+  padding: 0.5rem 0.75rem; display: flex; flex-wrap: wrap;
+  gap: 0.4rem; align-items: center; min-height: 42px; cursor: text;
+}
+.cs-skill-box:focus-within { border-color: #6b8f5e; }
+.cs-skill-input {
+  border: none; outline: none; background: transparent;
+  font-size: 0.85rem; color: #2a3a2a; flex: 1; min-width: 100px;
+}
+.cs-skill-input::placeholder { color: #b0c8b0; }
+.cs-chip {
+  background: #c8e6c0; border-radius: 999px;
+  padding: 0.2rem 0.6rem 0.2rem 0.75rem;
+  font-size: 0.75rem; color: #3d5c3d;
+  display: inline-flex; align-items: center; gap: 0.3rem;
+}
+.cs-chip-x {
+  background: none; border: none; cursor: pointer;
+  color: inherit; font-size: 0.9rem; padding: 0; line-height: 1; opacity: 0.6;
+}
+.cs-chip-x:hover { opacity: 1; }
+.cs-suggestions {
+  position: absolute; z-index: 10; left: 0; right: 0;
+  background: #fff; border: 1.5px solid #d0e8d0; border-top: none;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  max-height: 140px; overflow-y: auto;
+}
+.cs-suggestion-item {
+  padding: 0.5rem 0.9rem; font-size: 0.85rem; color: #3d5c3d; cursor: pointer;
+}
+.cs-suggestion-item:hover { background: #f0f8f0; }
+
+/* ─── Buttons ────────────────────────────────────────────────── */
+.cs-btn {
+  width: 100%; padding: 0.8rem; background: #7aad6a; color: #fff;
+  border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 700;
+  cursor: pointer; margin-top: 0.75rem; transition: background 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+}
+.cs-btn:hover:not(:disabled) { background: #5a8a4a; }
+.cs-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.cs-btn-ghost {
+  width: 100%; padding: 0.5rem; background: none; border: none;
+  color: #6b8f5e; font-size: 0.85rem; font-weight: 500;
+  cursor: pointer; margin-top: 0.3rem; text-align: center;
+}
+.cs-btn-ghost:hover { color: #3d5c3d; text-decoration: underline; }
+
+.cs-spinner {
+  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: white; border-radius: 50%;
+  animation: csSpin 0.6s linear infinite;
+}
+@keyframes csSpin { to { transform: rotate(360deg); } }
+
+.cs-api-error {
+  background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c;
+  border-radius: 8px; padding: 0.7rem 1rem; font-size: 0.84rem;
+  margin-bottom: 1rem;
+}
+
+/* ─── Illustration ───────────────────────────────────────────── */
+.cs-illus { display: flex; align-items: center; justify-content: center; }
+.cs-illus-svg { width: 240px; height: 300px; }
+
+/* ─── Success Modal ──────────────────────────────────────────── */
+.cs-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100; backdrop-filter: blur(2px);
+}
+.cs-modal {
+  background: #fff; border-radius: 18px;
+  padding: 2.25rem 2rem 2rem;
+  max-width: 360px; width: 90%; text-align: center;
+  position: relative; overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  animation: csModalIn 0.3s ease-out;
+}
+@keyframes csModalIn {
+  from { transform: scale(0.88); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
+/* Icon wrapper with party hat */
+.cs-modal-icon-wrap {
+  position: relative; width: 72px; height: 72px;
+  margin: 0 auto 1.25rem;
+}
+.cs-modal-party-hat {
+  position: absolute; top: -22px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.4rem; z-index: 2;
+}
+.cs-modal-icon {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: #e87b3a;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 24px rgba(232,123,58,0.4);
+  position: relative; z-index: 1;
+}
+.cs-modal-title {
+  font-size: 1.1rem; font-weight: 800; color: #1a2e1a;
+  margin: 0 0 0.6rem; font-family: 'Georgia', serif;
+}
+.cs-modal-sub {
+  font-size: 0.82rem; color: #5a7a5a; line-height: 1.5; margin-bottom: 1.5rem;
+}
+.cs-modal-btn { margin-top: 0 !important; }
+
+/* Confetti */
+.cs-confetti { position: absolute; inset: 0; pointer-events: none; }
+.cs-confetti-dot {
+  position: absolute; border-radius: 50%;
+  animation: csFall 1.6s ease-in forwards; opacity: 0;
+}
+@keyframes csFall {
+  0%   { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(70px)  rotate(360deg); opacity: 0; }
+}
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .cs-layout {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+  .cs-sidebar { flex-direction: row; overflow-x: auto; }
+  .cs-illus   { display: none; }
+}
