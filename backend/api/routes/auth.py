@@ -96,10 +96,11 @@ async def verify_otp(payload: VerifyOtpRequest, db: AsyncSession = Depends(get_d
     # Check expiry
     if user.otp_expires_at:
         exp = user.otp_expires_at
-        # Make timezone-aware if needed
-        if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=timezone.utc)
-        if datetime.now(timezone.utc) > exp:
+        # Compare as naive UTC datetimes
+        now = datetime.utcnow()
+        if exp.tzinfo is not None:
+            exp = exp.replace(tzinfo=None)
+        if now > exp:
             raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
 
     # Activate

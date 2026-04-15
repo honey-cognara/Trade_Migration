@@ -22,8 +22,8 @@ def generate_otp() -> str:
 
 
 def otp_expiry() -> datetime:
-    """Return OTP expiry time (10 minutes from now, UTC)."""
-    return datetime.now(timezone.utc) + timedelta(minutes=10)
+    """Return OTP expiry time (10 minutes from now, naive UTC)."""
+    return datetime.utcnow() + timedelta(minutes=10)
 
 
 def send_otp_email(to_email: str, otp: str, purpose: str = "verification") -> bool:
