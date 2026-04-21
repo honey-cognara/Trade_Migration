@@ -1,0 +1,176 @@
+/* ═══════════════════════════════════════════════════════════
+   Tradie Shared Flow — Landing / Register / OTP
+   Light cream background · Sage green · Orange accents
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── Base ───────────────────────────────────────────────────── */
+.sf-page {
+  min-height: 100vh;
+  background: #f6faf2;
+  position: relative;
+  overflow: hidden;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ─── Corner blobs ───────────────────────────────────────────── */
+.sf-blob {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+.sf-blob-tr {
+  width: 260px; height: 260px;
+  background: radial-gradient(circle, #d8edba 0%, #e8f5d0 55%, transparent 100%);
+  top: -70px; right: -70px;
+}
+.sf-blob-bl {
+  width: 230px; height: 230px;
+  background: radial-gradient(circle, #cce8a8 0%, #dff0c0 55%, transparent 100%);
+  bottom: -55px; left: -55px;
+}
+.sf-blob-tl {
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, #d8edba 0%, #eaf5d4 55%, transparent 100%);
+  top: -50px; left: -50px;
+}
+
+/* ─── Orange accent circles ──────────────────────────────────── */
+.sf-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2.5px solid #e87b3a;
+  pointer-events: none;
+  z-index: 0;
+}
+.sf-dot-o {
+  position: absolute; border-radius: 50%;
+  background: #e87b3a; pointer-events: none; z-index: 0; opacity: 0.55;
+  width: 5px; height: 5px;
+}
+/* Green hollow circles (used on OTP page) */
+.sf-ring-g {
+  position: absolute; border-radius: 50%;
+  border: 2.5px solid #5a8a4a; pointer-events: none; z-index: 0;
+}
+
+/* ─── Shared card ────────────────────────────────────────────── */
+.sf-card {
+  background: #e6f3dc;
+  border-radius: 16px;
+  padding: 2.25rem 2rem 2rem;
+  position: relative; z-index: 2;
+}
+.sf-card-title {
+  font-size: 1.45rem; font-weight: 800;
+  color: #1a2e1a; margin: 0 0 0.45rem;
+  font-family: 'Georgia', serif;
+}
+.sf-card-sub {
+  font-size: 0.84rem; color: #4a6a4a;
+  margin: 0 0 1.4rem; line-height: 1.55;
+}
+
+/* ─── Form elements ──────────────────────────────────────────── */
+.sf-field { margin-bottom: 0.95rem; }
+.sf-field label {
+  display: block; font-size: 0.82rem; font-weight: 600;
+  color: #3a5a3a; margin-bottom: 0.38rem;
+}
+.sf-input {
+  width: 100%; background: #fff;
+  border: 1.5px solid #cce0c0; border-radius: 8px;
+  padding: 0.68rem 0.9rem; font-size: 0.88rem;
+  color: #2a3a2a; outline: none; transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.sf-input::placeholder { color: #aac8a0; }
+.sf-input:focus { border-color: #6b9a5a; }
+.sf-input-err { border-color: #c0392b !important; }
+.sf-err { font-size: 0.75rem; color: #c0392b; margin-top: 0.28rem; display: block; }
+
+/* password wrapper */
+.sf-pw-wrap { position: relative; }
+.sf-pw-wrap .sf-input { padding-right: 2.4rem; }
+.sf-pw-eye {
+  position: absolute; right: 0.75rem; top: 50%;
+  transform: translateY(-50%); background: none; border: none;
+  cursor: pointer; color: #9ab89a; padding: 0; font-size: 1rem;
+  display: flex; align-items: center;
+}
+.sf-pw-eye:hover { color: #5a8a4a; }
+
+/* checkbox */
+.sf-check {
+  display: flex; align-items: center; gap: 0.6rem;
+  margin-bottom: 1rem; font-size: 0.83rem; color: #4a6a4a;
+  cursor: pointer;
+}
+.sf-check input[type="checkbox"] {
+  width: 15px; height: 15px; accent-color: #6b9a5a;
+  flex-shrink: 0; cursor: pointer;
+}
+
+/* ─── Buttons ────────────────────────────────────────────────── */
+.sf-btn {
+  width: 100%; padding: 0.8rem; background: #7aad6a; color: #fff;
+  border: none; border-radius: 8px; font-size: 0.92rem; font-weight: 700;
+  cursor: pointer; transition: background 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+}
+.sf-btn:hover:not(:disabled) { background: #5a8a4a; }
+.sf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* divider */
+.sf-or {
+  display: flex; align-items: center; gap: 0.75rem;
+  margin: 1rem 0; font-size: 0.8rem; color: #8aaa8a;
+}
+.sf-or::before, .sf-or::after {
+  content: ''; flex: 1; height: 1px; background: #cce0c0;
+}
+
+/* SSO row */
+.sf-sso { display: flex; gap: 0.75rem; }
+.sf-sso-btn {
+  flex: 1; background: #fff; border: 1.5px solid #cce0c0;
+  border-radius: 8px; padding: 0.6rem 0.5rem;
+  display: flex; align-items: center; justify-content: center; gap: 0.45rem;
+  font-size: 0.82rem; font-weight: 600; color: #3a5a3a; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.sf-sso-btn:hover { border-color: #6b9a5a; }
+
+/* link row */
+.sf-link-row {
+  text-align: center; font-size: 0.83rem; color: #6a8a6a; margin-top: 1rem;
+}
+.sf-link-row a, .sf-link-row button {
+  color: #5a8a4a; font-weight: 600; background: none; border: none;
+  cursor: pointer; font-size: inherit; padding: 0;
+}
+.sf-link-row a:hover, .sf-link-row button:hover { text-decoration: underline; }
+
+/* ghost link */
+.sf-ghost-link {
+  background: none; border: none; color: #5a8a4a; font-size: 0.84rem;
+  font-weight: 600; cursor: pointer; display: block;
+  text-align: center; margin-top: 0.75rem; width: 100%;
+}
+.sf-ghost-link:hover { text-decoration: underline; }
+
+/* alert */
+.sf-alert {
+  padding: 0.7rem 0.9rem; border-radius: 8px;
+  font-size: 0.83rem; margin-bottom: 0.9rem;
+}
+.sf-alert-err { background: rgba(192,57,43,0.08); border: 1px solid rgba(192,57,43,0.3); color: #c0392b; }
+.sf-alert-ok  { background: rgba(106,159,90,0.1); border: 1px solid rgba(106,159,90,0.3); color: #3a6a2a; }
+
+/* spinner */
+.sf-spinner {
+  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: white; border-radius: 50%;
+  animation: sfSpin 0.6s linear infinite;
+}
+@keyframes sfSpin { to { transform: rotate(360deg); } }

@@ -1,0 +1,128 @@
+/* ═══════════════════════════════════════════════════════════════
+   TrainerSetup — minimal extra styles
+   Base layout, buttons, modal and blobs come from index.css fd-*
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Layout overrides ──────────────────────────────────────── */
+.fd-setup-inner {
+  align-items: center;
+}
+
+/* Slightly narrower card to leave room for illustration */
+.fd-setup-card {
+  flex: 0 0 440px;
+  max-width: 440px;
+}
+
+/* ─── Tag / search input box ────────────────────────────────── */
+.ts-tag-wrap {
+  position: relative;
+}
+
+.ts-tag-box {
+  /* inherit fd-input look, but behave as flex container */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  min-height: 42px;
+  height: auto;
+  cursor: text;
+  padding: 0.45rem 0.85rem;
+}
+
+.ts-tag-box:focus-within {
+  border-color: var(--input-focus);
+  box-shadow: 0 0 0 3px rgba(83, 121, 244, 0.12);
+}
+
+.ts-tag-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 0.88rem;
+  color: var(--text-dark);
+  flex: 1;
+  min-width: 100px;
+}
+
+.ts-tag-input::placeholder {
+  color: #b0b8c4;
+}
+
+/* ─── Dropdown suggestions ──────────────────────────────────── */
+.ts-dropdown {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1.5px solid var(--input-border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.09);
+  max-height: 148px;
+  overflow-y: auto;
+}
+
+.ts-dropdown-item {
+  padding: 0.5rem 1rem;
+  font-size: 0.86rem;
+  color: var(--text-body);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.ts-dropdown-item:hover {
+  background: rgba(83, 121, 244, 0.07);
+}
+
+/* ─── Field error text ──────────────────────────────────────── */
+.ts-field-error {
+  font-size: 0.76rem;
+  color: var(--color-error);
+  margin-top: 0.3rem;
+}
+
+/* ─── Responsive ────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .fd-setup-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1.5rem;
+  }
+
+  .fd-setup-card {
+    flex: unset;
+    max-width: 100%;
+  }
+
+  .fd-setup-illus {
+    display: none;
+  }
+
+  .fd-steps {
+    flex-direction: row;
+    width: auto;
+  }
+
+  .fd-step {
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .fd-step:not(:last-child) .fd-step-line {
+    position: absolute;
+    left: 50%;
+    top: 11px;
+    width: 100%;
+    height: 2px;
+    background: #dde3f0;
+  }
+
+  .fd-step-info {
+    text-align: center;
+    padding-bottom: 0;
+  }
+}

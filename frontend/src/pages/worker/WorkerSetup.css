@@ -1,376 +1,120 @@
-/* ═══════════════════════════════════════════════════════════
-   Worker Setup — Sage-Green / Light-Mint theme
-   Matches the PDF design exactly
-   ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   Worker Setup — overrides & extras on top of index.css fd- classes
+   Primary colour: #5379f4 (indigo)   Card: #e6f1ff (light blue)
+   ═══════════════════════════════════════════════════════════════ */
 
-/* ─── Page wrapper ───────────────────────────────────────────── */
-.ws-page {
-  min-height: 100vh;
-  background: #f4f9f4;
-  position: relative;
-  overflow: hidden;
+/* ── Layout tweaks ──────────────────────────────────────────── */
+.wks-inner {
+  align-items: center;
+}
+
+/* Card: match Figma light-blue with 20px radius */
+.wks-card {
+  border-radius: 20px;
+  /* fd-setup-card already sets background: var(--card) = #e6f1ff  */
+  /* and shadow.  We only override radius here.                      */
+}
+
+/* ── Step tracker alignment ─────────────────────────────────── */
+.wks-steps {
+  padding-top: 0.5rem;
+}
+
+/* The fd- step-line height needs to span the gap between circles  */
+.wks-steps .fd-step:not(:last-child) .fd-step-line {
+  height: 52px;
+}
+
+/* ── Tag / chip input box ────────────────────────────────────── */
+.wks-tag-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  background: var(--input-bg);
+  border: 1.5px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  min-height: 44px;
+  cursor: text;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.wks-tag-box:focus-within {
+  border-color: var(--input-focus);
+  box-shadow: 0 0 0 3px rgba(83, 121, 244, 0.12);
+}
+
+.wks-tag-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 0.88rem;
+  color: var(--text-dark);
+  flex: 1;
+  min-width: 120px;
+}
+.wks-tag-input::placeholder { color: #b0b8c4; }
+
+/* Suggestions dropdown */
+.wks-suggestions {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1.5px solid var(--input-border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.09);
+  max-height: 160px;
+  overflow-y: auto;
+}
+.wks-suggestion-item {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  color: var(--text-body);
+  cursor: pointer;
+}
+.wks-suggestion-item:hover {
+  background: rgba(83, 121, 244, 0.06);
+  color: var(--primary);
+}
+
+/* ── Field error text ────────────────────────────────────────── */
+.wks-field-err {
+  font-size: 0.78rem;
+  color: var(--color-error);
+  margin-top: 0.3rem;
+}
+
+/* ── Right illustration column ──────────────────────────────── */
+.wks-illus {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1rem;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  min-width: 220px;
 }
 
-/* ─── Decorative blobs ───────────────────────────────────────── */
-.ws-blob {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 0;
-}
-.ws-blob-tl {
-  width: 280px; height: 280px;
-  background: radial-gradient(circle, #c8e6c0 0%, #e8f5e8 60%, transparent 100%);
-  top: -80px; left: -80px;
-  opacity: 0.9;
-}
-.ws-blob-br {
-  width: 240px; height: 240px;
-  background: radial-gradient(circle, #d4edba 0%, #e8f5e0 60%, transparent 100%);
-  bottom: -60px; right: -60px;
-  opacity: 0.8;
-}
-
-/* Orange accent circles */
-.ws-circle {
-  position: absolute;
-  border-radius: 50%;
-  border-color: #e87b3a;
-  border-style: solid;
-  pointer-events: none;
-  z-index: 0;
-}
-.ws-dot {
-  position: absolute;
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: #e87b3a;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.5;
-}
-
-/* ─── Main layout ────────────────────────────────────────────── */
-.ws-layout {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: 1000px;
-  display: grid;
-  grid-template-columns: 180px 1fr 220px;
-  gap: 2rem;
-  align-items: center;
-}
-
-/* ─── Left Sidebar ───────────────────────────────────────────── */
-.ws-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding-top: 1rem;
-}
-.ws-sidebar-item {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
-.ws-sidebar-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.2rem 0 0.75rem;
-}
-.ws-connector {
-  width: 2px;
-  height: 24px;
-  background: #c8ddc8;
-  margin-left: 11px;
-}
-.ws-connector-done {
-  background: #6b8f5e;
-}
-
-/* Step dot */
-.ws-step-dot {
-  width: 24px; height: 24px;
-  border-radius: 50%;
-  border: 2px solid #c8ddc8;
-  background: #fff;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-.ws-step-dot.active {
-  border-color: #5a8a4a;
-  background: #fff;
-}
-.ws-step-dot.done {
-  border-color: #5a8a4a;
-  background: #5a8a4a;
-}
-.ws-step-inner {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: #c8ddc8;
-}
-.ws-step-inner.active {
-  background: #5a8a4a;
-}
-
-/* Step text */
-.ws-step-label {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: #b0c8b0;
-  line-height: 1.2;
-}
-.ws-step-label.active {
-  color: #3d6b3d;
-}
-.ws-step-sub {
-  font-size: 0.75rem;
-  color: #9ab89a;
-  margin-top: 0.1rem;
-}
-
-/* ─── Center Card ────────────────────────────────────────────── */
-.ws-card {
-  background: #e8f4e8;
-  border-radius: 16px;
-  padding: 2rem 1.75rem 1.5rem;
-  box-shadow: 0 4px 24px rgba(100, 140, 100, 0.12);
-  position: relative;
-}
-
-.ws-card-title {
-  font-size: 1.4rem;
-  font-weight: 800;
-  color: #1a2e1a;
-  margin: 0 0 0.4rem;
-  font-family: 'Georgia', serif;
-}
-.ws-card-sub {
-  font-size: 0.85rem;
-  color: #5a7a5a;
-  margin: 0 0 1.4rem;
-  line-height: 1.5;
-}
-
-/* ─── Form fields ────────────────────────────────────────────── */
-.ws-field {
-  margin-bottom: 1.1rem;
-  position: relative;
-}
-.ws-field label {
-  display: block;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #3d5c3d;
-  margin-bottom: 0.4rem;
-}
-.ws-input {
-  width: 100%;
-  background: #fff;
-  border: 1.5px solid #d0e8d0;
-  border-radius: 8px;
-  padding: 0.7rem 0.9rem;
-  font-size: 0.88rem;
-  color: #2a3a2a;
-  outline: none;
-  transition: border-color 0.15s;
-  box-sizing: border-box;
-}
-.ws-input::placeholder { color: #b0c8b0; }
-.ws-input:focus { border-color: #6b8f5e; }
-.ws-input-err { border-color: #c0392b !important; }
-.ws-err { font-size: 0.75rem; color: #c0392b; margin-top: 0.25rem; display: block; }
-
-/* Select */
-.ws-select-wrap { position: relative; }
-.ws-select { appearance: none; cursor: pointer; padding-right: 2.2rem; }
-.ws-select-arrow {
-  position: absolute; right: 0.85rem; top: 50%; transform: translateY(-50%);
-  pointer-events: none; color: #6b8f5e; font-size: 0.8rem;
-}
-
-/* ─── Skills input ───────────────────────────────────────────── */
-.ws-skill-box {
-  background: #fff;
-  border: 1.5px solid #d0e8d0;
-  border-radius: 8px;
-  padding: 0.5rem 0.75rem;
-  display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;
-  min-height: 42px;
-  cursor: text;
-}
-.ws-skill-box:focus-within { border-color: #6b8f5e; }
-.ws-skill-input {
-  border: none; outline: none; background: transparent;
-  font-size: 0.85rem; color: #2a3a2a; flex: 1; min-width: 100px;
-}
-.ws-skill-input::placeholder { color: #b0c8b0; }
-.ws-chip {
-  background: #c8e6c0; border-radius: 999px;
-  padding: 0.2rem 0.6rem 0.2rem 0.75rem;
-  font-size: 0.75rem; color: #3d5c3d;
-  display: inline-flex; align-items: center; gap: 0.3rem;
-}
-.ws-chip-want { background: #d4e8f0; color: #2a4a5a; }
-.ws-chip-x {
-  background: none; border: none; cursor: pointer;
-  color: inherit; font-size: 0.9rem; padding: 0; line-height: 1;
-  opacity: 0.6;
-}
-.ws-chip-x:hover { opacity: 1; }
-
-/* Suggestions dropdown */
-.ws-suggestions {
-  position: absolute; z-index: 10; left: 0; right: 0;
-  background: #fff; border: 1.5px solid #d0e8d0; border-top: none;
-  border-radius: 0 0 8px 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-  max-height: 140px; overflow-y: auto;
-}
-.ws-suggestion-item {
-  padding: 0.5rem 0.9rem; font-size: 0.85rem; color: #3d5c3d;
-  cursor: pointer;
-}
-.ws-suggestion-item:hover { background: #f0f8f0; }
-
-/* ─── Upload area ────────────────────────────────────────────── */
-.ws-upload-area {
-  border: 2px dashed #b0ccb0;
-  border-radius: 10px;
-  padding: 1.25rem;
-  text-align: center;
-  cursor: pointer;
-  background: #f8fcf8;
-  transition: border-color 0.15s, background 0.15s;
-}
-.ws-upload-area:hover { border-color: #6b8f5e; background: #f0f8f0; }
-.ws-upload-area.ws-upload-done { border-color: #5a8a4a; background: #e8f4e8; }
-.ws-upload-icon { margin-bottom: 0.4rem; }
-.ws-upload-title { font-weight: 600; font-size: 0.88rem; color: #3d5c3d; }
-.ws-upload-hint { font-size: 0.78rem; color: #9ab89a; margin-top: 0.15rem; }
-
-/* ─── Buttons ────────────────────────────────────────────────── */
-.ws-btn {
-  width: 100%; padding: 0.8rem;
-  background: #7aad6a;
-  color: #fff;
-  border: none; border-radius: 8px;
-  font-size: 0.9rem; font-weight: 700;
-  cursor: pointer; margin-top: 0.75rem;
-  transition: background 0.15s;
-  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-}
-.ws-btn:hover:not(:disabled) { background: #5a8a4a; }
-.ws-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.ws-btn-ghost {
-  width: 100%; padding: 0.5rem;
-  background: none; border: none;
-  color: #6b8f5e; font-size: 0.85rem; font-weight: 500;
-  cursor: pointer; margin-top: 0.3rem;
-  text-align: center;
-}
-.ws-btn-ghost:hover { color: #3d5c3d; text-decoration: underline; }
-
-/* Spinner */
-.ws-spinner {
-  width: 14px; height: 14px;
-  border: 2px solid rgba(255,255,255,0.4);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: wsSpin 0.6s linear infinite;
-}
-@keyframes wsSpin { to { transform: rotate(360deg); } }
-
-/* API error banner */
-.ws-api-error {
-  background: #fef2f2; border: 1px solid #fca5a5;
-  color: #b91c1c; border-radius: 8px;
-  padding: 0.7rem 1rem; font-size: 0.84rem;
-  margin-bottom: 1rem;
-}
-
-/* ─── Right illustration ─────────────────────────────────────── */
-.ws-illus {
-  display: flex; align-items: center; justify-content: center;
-}
-.ws-illus-svg { width: 220px; height: 280px; }
-
-/* ─── Success Modal ──────────────────────────────────────────── */
-.ws-modal-overlay {
-  position: fixed; inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 100;
-  backdrop-filter: blur(2px);
-}
-.ws-modal {
-  background: #fff;
-  border-radius: 18px;
-  padding: 2.5rem 2rem 2rem;
-  max-width: 360px; width: 90%;
-  text-align: center;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-  animation: wsModalIn 0.3s ease-out;
-}
-@keyframes wsModalIn {
-  from { transform: scale(0.88); opacity: 0; }
-  to   { transform: scale(1);    opacity: 1; }
-}
-.ws-modal-icon {
-  width: 72px; height: 72px; border-radius: 50%;
-  background: #e87b3a;
-  display: flex; align-items: center; justify-content: center;
-  margin: 0 auto 1.25rem;
-  box-shadow: 0 8px 24px rgba(232,123,58,0.4);
-}
-.ws-modal-title {
-  font-size: 1.15rem; font-weight: 800;
-  color: #1a2e1a; margin: 0 0 0.6rem;
-  font-family: 'Georgia', serif;
-}
-.ws-modal-sub {
-  font-size: 0.83rem; color: #5a7a5a;
-  line-height: 1.5; margin-bottom: 1.5rem;
-}
-.ws-modal-btn { margin-top: 0 !important; }
-
-/* Confetti */
-.ws-confetti { position: absolute; inset: 0; pointer-events: none; }
-.ws-confetti-dot {
-  position: absolute; width: 7px; height: 7px; border-radius: 50%;
-  animation: wsFall 1.5s ease-in forwards;
-  opacity: 0;
-}
-@keyframes wsFall {
-  0%   { transform: translateY(-10px) rotate(0deg); opacity: 1; }
-  100% { transform: translateY(60px) rotate(360deg); opacity: 0; }
-}
-
-/* ─── Responsive ─────────────────────────────────────────────── */
-@media (max-width: 768px) {
-  .ws-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
-    gap: 1.25rem;
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .wks-inner {
+    flex-direction: column;
+    align-items: stretch;
   }
-  .ws-sidebar {
+  .fd-steps.wks-steps {
     flex-direction: row;
-    gap: 0;
-    padding-top: 0;
+    width: 100%;
     overflow-x: auto;
   }
-  .ws-sidebar-item { flex-direction: row; align-items: center; flex: 1; }
-  .ws-connector { width: 100%; height: 2px; margin-left: 0; }
-  .ws-illus { display: none; }
+  .fd-steps.wks-steps .fd-step {
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+  }
+  .fd-steps.wks-steps .fd-step .fd-step-line {
+    display: none;
+  }
+  .wks-illus {
+    display: none;
+  }
 }
