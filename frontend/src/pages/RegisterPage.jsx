@@ -8,7 +8,7 @@ export function RegisterPage() {
   const [params] = useSearchParams()
   const role = params.get('role') || 'candidate'
 
-  const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', terms: false })
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', terms: false })
   const [showPw, setShowPw] = useState(false)
   const [showCpw, setShowCpw] = useState(false)
   const [error, setError] = useState('')
@@ -18,6 +18,7 @@ export function RegisterPage() {
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (!form.name.trim()) { setError('Full name is required.'); return }
     if (!form.email) { setError('Email is required.'); return }
     if (form.password.length < 8) { setError('Password must be at least 8 characters.'); return }
     if (!/[A-Z]/.test(form.password)) { setError('Password must include an uppercase letter.'); return }
@@ -26,7 +27,7 @@ export function RegisterPage() {
     if (!form.terms) { setError('Please accept the terms and conditions.'); return }
     setLoading(true); setError('')
     try {
-      await register({ full_name: '', email: form.email, password: form.password, role })
+      await register({ full_name: form.name.trim(), email: form.email, password: form.password, role })
       navigate('/verify-otp', { state: { email: form.email } })
     } catch (err) {
       setError(err.detail || 'Registration failed. Please try again.')
@@ -84,6 +85,18 @@ export function RegisterPage() {
         )}
 
         <form onSubmit={handleSubmit} noValidate>
+
+          {/* Full Name */}
+          <div style={{ marginBottom:'1rem' }}>
+            <label style={{ display:'block', fontSize:'0.85rem', fontWeight:600, color:'#1a1a2e', marginBottom:'0.4rem' }}>Full name</label>
+            <input
+              type="text"
+              placeholder="Enter your full name"
+              value={form.name}
+              onChange={e => set('name', e.target.value)}
+              style={{ width:'100%', padding:'0.75rem 1rem', borderRadius:10, border:'1.5px solid #d0dbf0', background:'#fff', fontSize:'0.9rem', outline:'none', boxSizing:'border-box', color:'#1a1a2e' }}
+            />
+          </div>
 
           {/* Email */}
           <div style={{ marginBottom:'1rem' }}>
