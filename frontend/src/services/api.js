@@ -3,13 +3,29 @@ const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 async function request(method, path, body, token) {
   const headers = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  })
+
+  let res
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    })
+  } catch {
+    // Network error — backend unreachable or CORS preflight failed
+    throw { status: 0, detail: 'Cannot reach the server. Please ensure the backend is running on port 8000.' }
+  }
+
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw { status: res.status, detail: data.detail || 'Request failed' }
+  if (!res.ok) {
+    // FastAPI Pydantic validation errors return detail as an array of objects.
+    // Flatten them to a readable string so React can render them safely.
+    const raw = data.detail
+    const detail = Array.isArray(raw)
+      ? raw.map(d => d.msg || String(d)).join('. ')
+      : raw || 'Request failed'
+    throw { status: res.status, detail }
+  }
   return data
 }
 
