@@ -1,534 +1,365 @@
+"""
+Auth Router — Registration, Login, OTP verification, Password reset.
+
+Fixes applied:
+  1. verify-otp and resend-otp accept JSON body OR query params
+  2. verify-otp returns a JWT token on success (no separate login needed)
+  3. SKIP_EMAIL_VERIFICATION=true in .env auto-verifies accounts (dev mode)
+"""
+
+import os
 import uuid
-from datetime import datetime
-from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, field_validator, model_validator
+import secrets
+from datetime import datetime, timedelta
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from backend.db.setup import get_db
-from backend.api.dependencies.rbac import get_current_user, require_roles
-from backend.db.models.models import (
-    CandidateProfile, ExpressionOfInterest, User,
-    CandidateEmployerConsent, VisaShareApproval, EmployerCompany,
+from backend.utils.auth import hash_password, verify_password, create_access_token
+from backend.api.dependencies.rbac import get_current_user
+from backend.db.models.models import User, ConsentRecord
+from backend.api.schemas.auth import (
+    RegisterRequest, LoginRequest, TokenResponse, UserResponse,
+    ForgotPasswordRequest, VerifyResetOtpRequest, ResetPasswordRequest,
 )
+from backend.utils.email_validation import validate_email_domain
+from backend.utils.email_service import generate_otp, send_otp_email, send_password_reset_email
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
-# Values the DB column actually stores
-VALID_WORK_TYPES = {"domestic", "industrial", "commercial", "powerlines"}
+OTP_EXPIRY_MINUTES = 2
 
-# Values the frontend sends for role/availability — we accept these too but
-# store them in work_types as-is (they are stored in JSONB so no DB enum issue)
-FRONTEND_ROLE_TYPES = {"full_time", "part_time", "contract", "casual", "fifo",
-                       "immediately", "2_weeks", "1_month", "3_months"}
-
-# All accepted values combined
-ALL_ACCEPTED_WORK_TYPES = VALID_WORK_TYPES | FRONTEND_ROLE_TYPES
+# Read once at startup
+SKIP_EMAIL_VERIFICATION = os.getenv("SKIP_EMAIL_VERIFICATION", "false").lower() == "true"
 
 
-def _parse_years_experience(v) -> Optional[int]:
-    """
-    Accept both integers and frontend string ranges like '1-2', '3-5', '6-10', '10+'.
-    Returns the lower bound as an integer.
-    """
-    if v is None:
-        return None
-    if isinstance(v, int):
-        return v
-    if isinstance(v, str):
-        v = v.strip()
-        if v == '':
-            return None
-        if v.endswith('+'):
-            try:
-                return int(v[:-1])
-            except ValueError:
-                return None
-        if '-' in v:
-            try:
-                return int(v.split('-')[0])
-            except ValueError:
-                return None
-        try:
-            return int(v)
-        except ValueError:
-            return None
-    return None
+# ── Extra schemas for body-based OTP calls ────────────────────────────────────
+
+class VerifyOtpBody(BaseModel):
+    email: str
+    otp_code: str
 
 
-# ── Schemas ───────────────────────────────────────────────────────────────────
-
-class CandidateProfileCreate(BaseModel):
-    full_name: str = Field(..., min_length=2, max_length=200)
-    nationality: Optional[str] = Field(None, max_length=100)
-    country_of_residence: Optional[str] = Field(None, max_length=100)
-    trade_category: Optional[str] = Field(None, max_length=100)
-    is_electrical_worker: bool = False
-    years_experience: Optional[int] = Field(None, ge=0, le=70)
-    languages: Optional[List[dict]] = None
-    work_types: Optional[List[str]] = None
-    profile_summary: Optional[str] = Field(None, max_length=2000)
-    published: bool = False
-
-    @field_validator("years_experience", mode="before")
-    @classmethod
-    def coerce_years_experience(cls, v):
-        return _parse_years_experience(v)
-
-    @field_validator("work_types", mode="before")
-    @classmethod
-    def validate_work_types(cls, v):
-        if v is None:
-            return []
-        if not isinstance(v, list):
-            return []
-        # Silently keep only accepted values; drop unknown ones rather than error
-        cleaned = [item for item in v if isinstance(item, str) and item in ALL_ACCEPTED_WORK_TYPES]
-        return cleaned if cleaned else []
+class ResendOtpBody(BaseModel):
+    email: str
 
 
-class CandidateProfileUpdate(BaseModel):
-    full_name: Optional[str] = Field(None, min_length=2, max_length=200)
-    nationality: Optional[str] = Field(None, max_length=100)
-    country_of_residence: Optional[str] = Field(None, max_length=100)
-    trade_category: Optional[str] = Field(None, max_length=100)
-    is_electrical_worker: Optional[bool] = None
-    years_experience: Optional[int] = Field(None, ge=0, le=70)
-    languages: Optional[List[dict]] = None
-    work_types: Optional[List[str]] = None
-    profile_summary: Optional[str] = Field(None, max_length=2000)
-    published: Optional[bool] = None
+# ── Register ──────────────────────────────────────────────────────────────────
 
-    @field_validator("years_experience", mode="before")
-    @classmethod
-    def coerce_years_experience(cls, v):
-        return _parse_years_experience(v)
+@router.post("/register", status_code=201)
+@limiter.limit("60/minute")
+async def register(request: Request, payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    # 1. Validate email domain
+    is_valid, error_msg = await validate_email_domain(payload.email)
+    if not is_valid:
+        raise HTTPException(status_code=422, detail=error_msg)
 
-    @field_validator("work_types", mode="before")
-    @classmethod
-    def validate_work_types(cls, v):
-        if v is None:
-            return None
-        if not isinstance(v, list):
-            return []
-        cleaned = [item for item in v if isinstance(item, str) and item in ALL_ACCEPTED_WORK_TYPES]
-        return cleaned
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _profile_to_dict(p: CandidateProfile) -> dict:
-    return {
-        "id":                   str(p.id),
-        "user_id":              str(p.user_id),
-        "full_name":            p.full_name,
-        "nationality":          p.nationality,
-        "country_of_residence": p.country_of_residence,
-        "trade_category":       p.trade_category,
-        "is_electrical_worker": p.is_electrical_worker,
-        "years_experience":     p.years_experience,
-        "languages":            p.languages,
-        "work_types":           p.work_types,
-        "profile_summary":      p.profile_summary,
-        "published":            p.published,
-        "created_at":           p.created_at.isoformat() if p.created_at else None,
-    }
-
-
-async def _get_own_profile(user_id, db) -> CandidateProfile:
-    result = await db.execute(
-        select(CandidateProfile).where(CandidateProfile.user_id == user_id)
-    )
-    return result.scalar_one_or_none()
-
-
-# ── Profile Endpoints ─────────────────────────────────────────────────────────
-
-@router.post("/profile", status_code=201)
-async def create_profile(
-    payload: CandidateProfileCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """Create a candidate profile for the authenticated user."""
-    existing = await _get_own_profile(current_user.id, db)
-    if existing:
-        raise HTTPException(status_code=400, detail="Profile already exists. Use PUT to update.")
-
-    profile = CandidateProfile(
-        id=uuid.uuid4(),
-        user_id=current_user.id,
-        **payload.model_dump(),
-    )
-    db.add(profile)
-    await db.commit()
-    await db.refresh(profile)
-    return _profile_to_dict(profile)
-
-
-@router.get("/profile")
-async def get_my_profile(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """Return the authenticated candidate's own profile."""
-    profile = await _get_own_profile(current_user.id, db)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found. Please create one first.")
-    return _profile_to_dict(profile)
-
-
-@router.put("/profile")
-async def update_profile(
-    payload: CandidateProfileUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """Update the authenticated candidate's profile."""
-    profile = await _get_own_profile(current_user.id, db)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found. Please create one first.")
-
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(profile, field, value)
-
-    await db.commit()
-    await db.refresh(profile)
-    return _profile_to_dict(profile)
-
-
-@router.post("/profile/publish")
-async def publish_profile(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """Publish the candidate's profile so employers can discover them."""
-    profile = await _get_own_profile(current_user.id, db)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
-    profile.published = True
-    await db.commit()
-    return {"message": "Profile published.", "published": True}
-
-
-@router.post("/profile/unpublish")
-async def unpublish_profile(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """Unpublish the candidate's profile."""
-    profile = await _get_own_profile(current_user.id, db)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
-    profile.published = False
-    await db.commit()
-    return {"message": "Profile unpublished.", "published": False}
-
-
-# ── EOI endpoints ─────────────────────────────────────────────────────────────
-
-@router.get("/eois")
-async def list_received_eois(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """List all EOIs received by this candidate."""
-    profile = await _get_own_profile(current_user.id, db)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
-
-    result = await db.execute(
-        select(ExpressionOfInterest, EmployerCompany)
-        .join(EmployerCompany, ExpressionOfInterest.employer_company_id == EmployerCompany.id)
-        .where(ExpressionOfInterest.candidate_id == profile.id)
-        .order_by(ExpressionOfInterest.created_at.desc())
-    )
-    rows = result.all()
-    return [
-        {
-            "id":                  str(e.id),
-            "employer_company_id": str(e.employer_company_id),
-            "employer_name":       co.company_name,
-            "job_title":           e.job_title,
-            "message":             e.message,
-            "sponsorship_flag":    e.sponsorship_flag,
-            "status":              e.status,
-            "created_at":          e.created_at.isoformat() if e.created_at else None,
-        }
-        for e, co in rows
-    ]
-
-
-@router.patch("/eois/{eoi_id}/read")
-async def mark_eoi_read(
-    eoi_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """Mark an EOI as read."""
-    profile = await _get_own_profile(current_user.id, db)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
-    try:
-        eoi_uuid = uuid.UUID(eoi_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid EOI ID.")
-
-    result = await db.execute(
-        select(ExpressionOfInterest).where(
-            and_(ExpressionOfInterest.id == eoi_uuid,
-                 ExpressionOfInterest.candidate_id == profile.id)
-        )
-    )
-    eoi = result.scalar_one_or_none()
-    if not eoi:
-        raise HTTPException(status_code=404, detail="EOI not found.")
-    eoi.status = "read"
-    await db.commit()
-    return {"message": "Marked as read.", "eoi_id": eoi_id}
-
-
-# ── Consent endpoints ─────────────────────────────────────────────────────────
-
-@router.post("/consent/employer/{employer_id}", status_code=201)
-async def grant_employer_consent(
-    employer_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """Grant an employer access to your full profile."""
-    profile = await _get_own_profile(current_user.id, db)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
-    try:
-        emp_uuid = uuid.UUID(employer_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="employer_id must be a valid UUID.")
-
-    emp_res = await db.execute(select(EmployerCompany).where(EmployerCompany.id == emp_uuid))
-    employer = emp_res.scalar_one_or_none()
-    if not employer:
-        raise HTTPException(status_code=404, detail="Employer company not found.")
-
-    existing = await db.execute(
-        select(CandidateEmployerConsent).where(
-            and_(CandidateEmployerConsent.candidate_id == profile.id,
-                 CandidateEmployerConsent.employer_company_id == emp_uuid,
-                 CandidateEmployerConsent.is_active == True)
-        )
-    )
+    # 2. Check for duplicate email
+    existing = await db.execute(select(User).where(User.email == payload.email))
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Consent already granted to this employer.")
+        raise HTTPException(status_code=400, detail="An account with this email already exists")
 
-    revoked = await db.execute(
-        select(CandidateEmployerConsent).where(
-            and_(CandidateEmployerConsent.candidate_id == profile.id,
-                 CandidateEmployerConsent.employer_company_id == emp_uuid,
-                 CandidateEmployerConsent.is_active == False)
-        )
+    # 3. Generate OTP
+    otp = generate_otp()
+    expires_at = datetime.utcnow() + timedelta(minutes=OTP_EXPIRY_MINUTES)
+
+    # 4. Create user (status=pending until email verified)
+    new_user = User(
+        id=uuid.uuid4(),
+        cognito_sub=f"local-{uuid.uuid4()}",
+        role=payload.role.value,
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+        status="pending",
+        email_verified=False,
+        otp_code=otp,
+        otp_expires_at=expires_at,
     )
-    record = revoked.scalar_one_or_none()
-    if record:
-        record.is_active = True
-        record.granted_at = datetime.utcnow()
-        record.revoked_at = None
-    else:
-        record = CandidateEmployerConsent(
+    db.add(new_user)
+    await db.flush()
+
+    # 5. Consent record
+    consent = ConsentRecord(
+        id=uuid.uuid4(),
+        user_id=new_user.id,
+        consent_type="registration",
+        consent_version="2025-v1",
+    )
+    db.add(consent)
+    await db.commit()
+    await db.refresh(new_user)
+
+    # 6. Auto-create stub candidate profile
+    if new_user.role == "candidate" and payload.name:
+        from backend.db.models.models import CandidateProfile
+        stub = CandidateProfile(
             id=uuid.uuid4(),
-            candidate_id=profile.id,
-            employer_company_id=emp_uuid,
-            is_active=True,
+            user_id=new_user.id,
+            full_name=payload.name.strip(),
         )
-        db.add(record)
+        db.add(stub)
+        await db.commit()
 
-    await db.commit()
-    await db.refresh(record)
+    # ── Dev mode: skip email verification entirely ────────────────────────────
+    if SKIP_EMAIL_VERIFICATION:
+        new_user.email_verified = True
+        new_user.status = "active"
+        new_user.otp_code = None
+        new_user.otp_expires_at = None
+        await db.commit()
+
+        token = create_access_token({
+            "user_id": str(new_user.id),
+            "email":   new_user.email,
+            "role":    new_user.role,
+        })
+        return {
+            "message":      "Account created and auto-verified (dev mode — SKIP_EMAIL_VERIFICATION=true).",
+            "email":        new_user.email,
+            "status":       "active",
+            "access_token": token,
+            "role":         new_user.role,
+            "user_id":      str(new_user.id),
+            "skip_otp":     True,   # tells frontend to skip OTP page
+        }
+
+    # ── Production: send OTP email ────────────────────────────────────────────
+    sent = await send_otp_email(new_user.email, otp)
+    if not sent:
+        # Email failed but account is created — user can request resend
+        return {
+            "message": (
+                "Account created but we could not send the verification email. "
+                "Please use the resend-otp option on the verification page."
+            ),
+            "email":  new_user.email,
+            "status": "pending",
+        }
+
     return {
-        "id":                  str(record.id),
-        "candidate_id":        str(record.candidate_id),
-        "employer_company_id": str(record.employer_company_id),
-        "employer_name":       employer.company_name,
-        "is_active":           record.is_active,
-        "granted_at":          record.granted_at.isoformat() if record.granted_at else None,
+        "message": (
+            f"Account created. A 6-digit verification code has been sent to {new_user.email}. "
+            f"It expires in {OTP_EXPIRY_MINUTES} minutes."
+        ),
+        "email":  new_user.email,
+        "status": "pending",
     }
 
 
-@router.get("/consent/employers")
-async def list_employer_consents(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """List all employers the candidate has granted profile access to."""
-    profile = await _get_own_profile(current_user.id, db)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
+# ── Verify OTP ─────────────────────────────────────────────────────────────────
+# Accepts JSON body {"email":"...","otp_code":"..."} OR ?email=&otp= query params
 
-    result = await db.execute(
-        select(CandidateEmployerConsent, EmployerCompany)
-        .join(EmployerCompany, CandidateEmployerConsent.employer_company_id == EmployerCompany.id)
-        .where(CandidateEmployerConsent.candidate_id == profile.id)
-        .order_by(CandidateEmployerConsent.granted_at.desc())
-    )
-    rows = result.all()
-    return [
-        {
-            "id":                  str(c.id),
-            "employer_company_id": str(c.employer_company_id),
-            "employer_name":       e.company_name,
-            "is_active":           c.is_active,
-            "granted_at":          c.granted_at.isoformat() if c.granted_at else None,
-            "revoked_at":          c.revoked_at.isoformat() if c.revoked_at else None,
+@router.post("/verify-otp")
+async def verify_otp(
+    # JSON body (sent by frontend)
+    body: Optional[VerifyOtpBody] = None,
+    # Query params (Swagger / direct API calls)
+    email: Optional[str] = Query(None),
+    otp:   Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    resolved_email = (body.email    if body else None) or email
+    resolved_otp   = (body.otp_code if body else None) or otp
+
+    if not resolved_email or not resolved_otp:
+        raise HTTPException(status_code=422, detail="email and otp_code are required.")
+
+    result = await db.execute(select(User).where(User.email == resolved_email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email.")
+
+    if user.email_verified:
+        # Already verified — just return a token so user can proceed
+        token = create_access_token({"user_id": str(user.id), "email": user.email, "role": user.role})
+        return {
+            "message":      "Email is already verified.",
+            "access_token": token,
+            "role":         user.role,
+            "user_id":      str(user.id),
+            "email":        user.email,
         }
-        for c, e in rows
-    ]
 
+    if not user.otp_code:
+        raise HTTPException(status_code=400, detail="No OTP found. Please request a new one.")
 
-@router.delete("/consent/employer/{employer_id}", status_code=200)
-async def revoke_employer_consent(
-    employer_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """Revoke an employer's access to your full profile."""
-    profile = await _get_own_profile(current_user.id, db)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
-    try:
-        emp_uuid = uuid.UUID(employer_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="employer_id must be a valid UUID.")
-
-    result = await db.execute(
-        select(CandidateEmployerConsent).where(
-            and_(CandidateEmployerConsent.candidate_id == profile.id,
-                 CandidateEmployerConsent.employer_company_id == emp_uuid,
-                 CandidateEmployerConsent.is_active == True)
+    if datetime.utcnow() > user.otp_expires_at:
+        raise HTTPException(
+            status_code=400,
+            detail="OTP has expired (2-minute limit). Please use resend-otp to get a new code.",
         )
-    )
-    record = result.scalar_one_or_none()
-    if not record:
-        raise HTTPException(status_code=404, detail="No active consent found for this employer.")
-    record.is_active = False
-    record.revoked_at = datetime.utcnow()
+
+    if user.otp_code != resolved_otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP. Please check the code and try again.")
+
+    # Activate account
+    user.email_verified = True
+    user.status = "active"
+    user.otp_code = None
+    user.otp_expires_at = None
     await db.commit()
-    return {"message": "Consent revoked.", "employer_company_id": employer_id}
 
-
-# ── Visa Share Approval Endpoints ─────────────────────────────────────────────
-
-@router.post("/visa-share/{eoi_id}/approve", status_code=201)
-async def approve_visa_share(
-    eoi_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """Approve sharing visa/migration documents with the employer who sent this EOI."""
-    profile = await _get_own_profile(current_user.id, db)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
-    try:
-        eoi_uuid = uuid.UUID(eoi_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="eoi_id must be a valid UUID.")
-
-    eoi_res = await db.execute(
-        select(ExpressionOfInterest).where(
-            and_(ExpressionOfInterest.id == eoi_uuid,
-                 ExpressionOfInterest.candidate_id == profile.id)
-        )
-    )
-    eoi = eoi_res.scalar_one_or_none()
-    if not eoi:
-        raise HTTPException(status_code=404, detail="EOI not found or does not belong to you.")
-
-    existing = await db.execute(
-        select(VisaShareApproval).where(
-            and_(VisaShareApproval.candidate_id == profile.id,
-                 VisaShareApproval.eoi_id == eoi_uuid,
-                 VisaShareApproval.is_active == True)
-        )
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Visa share already approved for this EOI.")
-
-    approval = VisaShareApproval(
-        id=uuid.uuid4(),
-        candidate_id=profile.id,
-        employer_company_id=eoi.employer_company_id,
-        eoi_id=eoi_uuid,
-        is_active=True,
-    )
-    db.add(approval)
-    await db.commit()
-    await db.refresh(approval)
+    # Return token immediately — frontend logs user in without a second /login call
+    token = create_access_token({"user_id": str(user.id), "email": user.email, "role": user.role})
     return {
-        "id":                  str(approval.id),
-        "candidate_id":        str(approval.candidate_id),
-        "employer_company_id": str(approval.employer_company_id),
-        "eoi_id":              str(approval.eoi_id),
-        "is_active":           approval.is_active,
-        "approved_at":         approval.approved_at.isoformat() if approval.approved_at else None,
+        "message":      "Email verified successfully.",
+        "access_token": token,
+        "role":         user.role,
+        "user_id":      str(user.id),
+        "email":        user.email,
     }
 
 
-@router.post("/visa-share/{eoi_id}/revoke", status_code=200)
-async def revoke_visa_share(
-    eoi_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """Revoke visa document sharing approval for a specific EOI."""
-    profile = await _get_own_profile(current_user.id, db)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
-    try:
-        eoi_uuid = uuid.UUID(eoi_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="eoi_id must be a valid UUID.")
+# ── Resend OTP ────────────────────────────────────────────────────────────────
+# Accepts JSON body {"email":"..."} OR ?email= query param
 
-    result = await db.execute(
-        select(VisaShareApproval).where(
-            and_(VisaShareApproval.candidate_id == profile.id,
-                 VisaShareApproval.eoi_id == eoi_uuid,
-                 VisaShareApproval.is_active == True)
-        )
-    )
-    approval = result.scalar_one_or_none()
-    if not approval:
-        raise HTTPException(status_code=404, detail="No active visa share approval found for this EOI.")
-    approval.is_active = False
-    approval.revoked_at = datetime.utcnow()
+@router.post("/resend-otp")
+@limiter.limit("5/minute")
+async def resend_otp(
+    request: Request,
+    body:  Optional[ResendOtpBody] = None,
+    email: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    resolved_email = (body.email if body else None) or email
+
+    if not resolved_email:
+        raise HTTPException(status_code=422, detail="email is required.")
+
+    result = await db.execute(select(User).where(User.email == resolved_email))
+    user = result.scalar_one_or_none()
+
+    # Generic response — don't reveal whether email exists
+    if not user or user.email_verified:
+        return {"message": "If that email is registered and unverified, a new OTP has been sent."}
+
+    new_otp = generate_otp()
+    user.otp_code = new_otp
+    user.otp_expires_at = datetime.utcnow() + timedelta(minutes=OTP_EXPIRY_MINUTES)
     await db.commit()
-    return {"message": "Visa share approval revoked.", "eoi_id": eoi_id}
+
+    await send_otp_email(resolved_email, new_otp)
+    return {"message": "If that email is registered and unverified, a new OTP has been sent."}
 
 
-@router.get("/visa-shares")
-async def list_visa_share_approvals(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_roles("candidate")),
-):
-    """List all visa document sharing approvals granted by this candidate."""
-    profile = await _get_own_profile(current_user.id, db)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
+# ── Login ─────────────────────────────────────────────────────────────────────
 
-    result = await db.execute(
-        select(VisaShareApproval, EmployerCompany)
-        .join(EmployerCompany, VisaShareApproval.employer_company_id == EmployerCompany.id)
-        .where(VisaShareApproval.candidate_id == profile.id)
-        .order_by(VisaShareApproval.approved_at.desc())
+@router.post("/login", response_model=TokenResponse)
+@limiter.limit("60/minute")
+async def login(request: Request, payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.password_hash:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Please verify your email first. Check your inbox for the 6-digit code.",
+        )
+    if user.status != "active":
+        raise HTTPException(status_code=403, detail="Account is inactive.")
+
+    token = create_access_token({"user_id": str(user.id), "email": user.email, "role": user.role})
+    return TokenResponse(access_token=token, role=user.role, user_id=str(user.id), email=user.email)
+
+
+# ── Forgot Password ────────────────────────────────────────────────────────────
+
+RESET_OTP_EXPIRY_MINUTES   = 2
+RESET_TOKEN_EXPIRY_MINUTES = 15
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, payload: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+
+    if user and user.email_verified:
+        otp = generate_otp()
+        user.otp_code = otp
+        user.otp_expires_at = datetime.utcnow() + timedelta(minutes=RESET_OTP_EXPIRY_MINUTES)
+        user.reset_token = None
+        user.reset_token_expires_at = None
+        await db.commit()
+        await send_password_reset_email(payload.email, otp)
+
+    return {"message": "If that email is registered, a password-reset code has been sent. Check your inbox."}
+
+
+@router.post("/verify-reset-otp")
+async def verify_reset_otp(payload: VerifyResetOtpRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP.")
+    if not user.otp_code or not user.otp_expires_at:
+        raise HTTPException(status_code=400, detail="No reset code found. Please request a new one.")
+    if datetime.utcnow() > user.otp_expires_at:
+        raise HTTPException(status_code=400, detail="Reset code has expired. Please request a new one.")
+    if user.otp_code != payload.otp:
+        raise HTTPException(status_code=400, detail="Invalid reset code.")
+
+    reset_token = secrets.token_urlsafe(32)
+    user.reset_token = reset_token
+    user.reset_token_expires_at = datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
+    user.otp_code = None
+    user.otp_expires_at = None
+    await db.commit()
+
+    return {
+        "message":     "OTP verified. Use the reset_token to set your new password.",
+        "reset_token": reset_token,
+    }
+
+
+@router.post("/reset-password")
+async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.reset_token:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
+    if user.reset_token != payload.reset_token:
+        raise HTTPException(status_code=400, detail="Invalid reset token.")
+    if not user.reset_token_expires_at or datetime.utcnow() > user.reset_token_expires_at:
+        user.reset_token = None
+        user.reset_token_expires_at = None
+        await db.commit()
+        raise HTTPException(status_code=400, detail="Reset token has expired. Please start over.")
+
+    user.password_hash = hash_password(payload.new_password)
+    user.reset_token = None
+    user.reset_token_expires_at = None
+    await db.commit()
+
+    return {"message": "Password reset successfully. You can now log in with your new password."}
+
+
+# ── Me / Logout ───────────────────────────────────────────────────────────────
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(current_user: User = Depends(get_current_user)):
+    return UserResponse(
+        id=str(current_user.id),
+        email=current_user.email,
+        role=current_user.role,
+        status=current_user.status,
     )
-    rows = result.all()
-    return [
-        {
-            "id":                  str(a.id),
-            "employer_company_id": str(a.employer_company_id),
-            "employer_name":       e.company_name,
-            "eoi_id":              str(a.eoi_id),
-            "is_active":           a.is_active,
-            "approved_at":         a.approved_at.isoformat() if a.approved_at else None,
-            "revoked_at":          a.revoked_at.isoformat() if a.revoked_at else None,
-        }
-        for a, e in rows
-    ]
+
+
+@router.post("/logout")
+async def logout(_: User = Depends(get_current_user)):
+    """Client discards the JWT. Server-side blacklist not implemented in MVP."""
+    return {"message": "Logged out successfully."}
