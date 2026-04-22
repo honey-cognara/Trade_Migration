@@ -239,8 +239,8 @@ export function ForgotPasswordPage() {
     if (otp.length < 6) { setError('Please enter the 6-digit code.'); return }
     setLoading(true); setError('')
     try {
-      const data = await verifyResetOtp({ email, otp_code: otp })
-      setResetToken(data.access_token)
+      const data = await verifyResetOtp({ email, otp })
+      setResetToken(data.reset_token)
       setStep(3)
     } catch (err) {
       setError(err.detail || 'Invalid or expired code.')
@@ -256,7 +256,7 @@ export function ForgotPasswordPage() {
     if (newPassword !== confirmPassword)     { setError('Passwords do not match.'); return }
     setLoading(true); setError('')
     try {
-      await resetPassword({ reset_token: resetToken, new_password: newPassword })
+      await resetPassword({ email, reset_token: resetToken, new_password: newPassword })
       setShowModal(true)
     } catch (err) {
       setError(err.detail || 'Failed to reset password. Please start over.')

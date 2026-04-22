@@ -119,7 +119,7 @@ function IllusRight() {
 /* ── role → first-login route ── */
 const ROLE_REDIRECT = {
   candidate:         '/setup/worker/1',
-  employer:          '/setup/company/1',
+  employer:          '/setup/employer/1',
   training_provider: '/setup/trainer/1',
   admin:             '/dashboard',
   migration_agent:   '/dashboard',
@@ -149,7 +149,7 @@ export function OtpPage() {
     if (code.length < 6) { setError('Please enter the 6-digit code.'); return }
     setLoading(true); setError('')
     try {
-      const data = await verifyOtp({ email, otp_code: code })
+      const data = await verifyOtp({ email, otp: code })
       saveToken(data.access_token)
       navigate(ROLE_REDIRECT[data.role] || '/dashboard', { replace: true })
     } catch (err) {

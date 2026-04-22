@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: tradie123
       POSTGRES_DB: tradie_migration
     ports:
-      - "5432:5432"                       # Maps to localhost:5432
+      - "5433:5432"                       # Maps to localhost:5433
     volumes:
       - tradie_db_data:/var/lib/postgresql/data   # Data persists even if container restarts
 

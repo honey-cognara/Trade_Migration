@@ -12,14 +12,11 @@ async function request(method, path, body, token) {
       body: body ? JSON.stringify(body) : undefined,
     })
   } catch {
-    // Network error — backend unreachable or CORS preflight failed
     throw { status: 0, detail: 'Cannot reach the server. Please ensure the backend is running on port 8000.' }
   }
 
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    // FastAPI Pydantic validation errors return detail as an array of objects.
-    // Flatten them to a readable string so React can render them safely.
     const raw = data.detail
     const detail = Array.isArray(raw)
       ? raw.map(d => d.msg || String(d)).join('. ')
@@ -40,14 +37,26 @@ async function formRequest(method, path, formData, token) {
 
 // ── Auth ────────────────────────────────────────────────────────
 export const register = (payload) => request('POST', '/auth/register', payload)
-export const login = (payload) => request('POST', '/auth/login', payload)
-export const verifyOtp = (payload) => request('POST', '/auth/verify-otp', payload)
-export const resendOtp = (payload) => request('POST', '/auth/resend-otp', payload)
-export const forgotPassword = (payload) => request('POST', '/auth/forgot-password', payload)
-export const verifyResetOtp = (payload) => request('POST', '/auth/verify-reset-otp', payload)
-export const resetPassword = (payload) => request('POST', '/auth/reset-password', payload)
-export const getMe = (token) => request('GET', '/auth/me', null, token)
-export const logout = (token) => request('POST', '/auth/logout', null, token)
+export const login    = (payload) => request('POST', '/auth/login', payload)
+
+// FIX: backend expects ?email=&otp= as query params, not JSON body
+export const verifyOtp = ({ email, otp_code }) =>
+  request('POST', `/auth/verify-otp?email=${encodeURIComponent(email)}&otp=${encodeURIComponent(otp_code)}`)
+
+// FIX: backend expects ?email= as query param
+export const resendOtp = ({ email }) =>
+  request('POST', `/auth/resend-otp?email=${encodeURIComponent(email)}`)
+
+export const forgotPassword  = (payload) => request('POST', '/auth/forgot-password', payload)
+export const verifyResetOtp  = (payload) => request('POST', '/auth/verify-reset-otp', payload)
+export const resetPassword   = (payload) => request('POST', '/auth/reset-password', payload)
+export const getMe           = (token)   => request('GET', '/auth/me', null, token)
+export const logout          = (token)   => request('POST', '/auth/logout', null, token)
+
+// ── Dashboard ───────────────────────────────────────────────────
+export const getMyDashboard     = (token) => request('GET', '/dashboard/my', null, token)
+export const getRecentActivity  = (token) => request('GET', '/dashboard/recent-activity', null, token)
+export const getPendingEmployers= (token) => request('GET', '/dashboard/pending-employers', null, token)
 
 // ── Candidates ──────────────────────────────────────────────────
 export const createCandidateProfile = (payload, token) =>
@@ -56,20 +65,29 @@ export const updateCandidateProfile = (payload, token) =>
   request('PUT', '/candidates/profile', payload, token)
 export const publishProfile = (token) =>
   request('POST', '/candidates/profile/publish', null, token)
+export const getCandidateProfile = (token) =>
+  request('GET', '/candidates/profile', null, token)
 
 // ── Employers ───────────────────────────────────────────────────
 export const createCompany = (payload, token) =>
   request('POST', '/employers/company', payload, token)
 export const updateCompany = (payload, token) =>
   request('PUT', '/employers/company', payload, token)
+export const getMyCompany = (token) =>
+  request('GET', '/employers/company', null, token)
 
 // ── Training Providers ──────────────────────────────────────────
+// FIX: backend is mounted at /training/provider (not /training-providers/)
 export const createTrainingProvider = (payload, token) =>
-  request('POST', '/training-providers/', payload, token)
+  request('POST', '/training/provider', payload, token)
 export const updateTrainingProvider = (id, payload, token) =>
-  request('PUT', `/training-providers/${id}`, payload, token)
+  request('PUT', `/training/provider/${id}`, payload, token)
+export const getTrainingProviders = () =>
+  request('GET', '/training/provider')
+export const getCourses = (trade_category) =>
+  request('GET', `/training/courses${trade_category ? `?trade_category=${trade_category}` : ''}`)
 
 // ── Token helpers ───────────────────────────────────────────────
-export const saveToken = (token) => localStorage.setItem('access_token', token)
-export const getToken = () => localStorage.getItem('access_token')
-export const clearToken = () => localStorage.removeItem('access_token')
+export const saveToken  = (token) => localStorage.setItem('access_token', token)
+export const getToken   = ()      => localStorage.getItem('access_token')
+export const clearToken = ()      => localStorage.removeItem('access_token')

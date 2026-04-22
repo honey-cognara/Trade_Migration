@@ -10,7 +10,7 @@ import { login, saveToken } from '../services/api'
 
 const ROLE_REDIRECT = {
   candidate:         '/setup/worker/1',
-  employer:          '/setup/company/1',
+  employer:          '/setup/employer/1',
   training_provider: '/setup/trainer/1',
   admin:             '/dashboard',
   migration_agent:   '/dashboard',
