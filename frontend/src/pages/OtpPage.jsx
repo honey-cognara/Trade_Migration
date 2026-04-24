@@ -2,128 +2,123 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { verifyOtp, resendOtp, saveToken } from '../services/api'
 
-/*
-  Illustration rebuilt pixel-by-pixel from Figma screenshot.
-  Exact colors from Figma node vectors:
-    skin    #ffb8b8  |  dark-navy  #2f2e41  |  outfit  #3f3d56
-    orange  #f26f37  |  pink-bag   #ff6584  |  blue    #5379f4
-    bubble-fill  #e6e6e6  |  grey  #cccccc  |  outline  #3d3b4f
-*/
-function IllusRight() {
-  return (
-    <svg
-      viewBox="0 0 580 470"
-      style={{ width: '100%', maxWidth: 680, height: 'auto' }}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      {/* ══════════════════════════════════════
-          SPEECH BUBBLE  (left side)
-         ══════════════════════════════════════ */}
-
-      {/* Main bubble oval — light-grey fill, thin dashed outline */}
-      <ellipse cx="152" cy="183" rx="120" ry="108"
-        fill="#e6e6e6"
-        stroke="#3d3b4f" strokeWidth="1.6" strokeDasharray="5 4"/>
-
-      {/* Bubble appendage — small oval bottom-left */}
-      <ellipse cx="84" cy="300" rx="36" ry="27"
-        fill="#e6e6e6"
-        stroke="#3d3b4f" strokeWidth="1.6" strokeDasharray="5 4"/>
-
-      {/* 3 orange bars */}
-      <rect x="78"  y="138" width="150" height="28" rx="14" fill="#f26f37"/>
-      <rect x="78"  y="177" width="150" height="28" rx="14" fill="#f26f37"/>
-      <rect x="78"  y="216" width="116" height="28" rx="14" fill="#f26f37"/>
-
-      {/* Small grey USB / tablet below appendage */}
-      <rect x="58"  y="335" width="54"  height="19" rx="7"  fill="#d0d0d0"/>
-      <rect x="46"  y="350" width="78"  height="12" rx="5"  fill="#c4c4c4"/>
-
-      {/* ══════════════════════════════════════
-          BROWSER CARD  (bottom-right)
-         ══════════════════════════════════════ */}
-      <rect x="282" y="382" width="298" height="134" rx="13"
-        fill="white" stroke="#e4e8f0" strokeWidth="1.5"/>
-      {/* Orange header */}
-      <rect x="282" y="382" width="298" height="34" rx="13" fill="#f26f37"/>
-      <rect x="282" y="399" width="298" height="17" fill="#f26f37"/>
-      {/* Traffic-light dots */}
-      <circle cx="306" cy="399" r="6"   fill="white" opacity="0.7"/>
-      <circle cx="325" cy="399" r="6"   fill="white" opacity="0.5"/>
-      <circle cx="344" cy="399" r="6"   fill="white" opacity="0.35"/>
-      {/* Blue content bar */}
-      <rect x="306" y="427" width="198" height="12" rx="6"   fill="#5379f4" opacity="0.85"/>
-      {/* Grey content lines */}
-      <rect x="306" y="450" width="172" height="10" rx="5"   fill="#cccccc"/>
-      <rect x="306" y="467" width="184" height="10" rx="5"   fill="#cccccc"/>
-      <rect x="306" y="484" width="152" height="10" rx="5"   fill="#cccccc"/>
-
-      {/* ══════════════════════════════════════
-          WOMAN  — peach skin, dark outfit,
-                   long high ponytail
-         ══════════════════════════════════════ */}
-
-      {/* ── Feet / shoes ── */}
-      <ellipse cx="370" cy="385" rx="24" ry="9" fill="#2f2e41"/>
-      <ellipse cx="416" cy="385" rx="22" ry="9" fill="#2f2e41"/>
-
-      {/* ── Bare peach legs ── */}
-      <rect x="358" y="312" width="22" height="75" rx="11" fill="#ffb8b8"/>
-      <rect x="401" y="312" width="22" height="75" rx="11" fill="#ffb8b8"/>
-
-      {/* ── Long dark skirt ── */}
-      <path d="M350 210 Q337 268 352 314 L434 314 Q446 268 436 210 Z"
-        fill="#2f2e41"/>
-
-      {/* ── Body / top (dark charcoal) ── */}
-      <rect x="355" y="143" width="68" height="72" rx="9" fill="#3f3d56"/>
-
-      {/* ── Left arm → orange folder ── */}
-      <path d="M355 164 Q318 172 284 192 Q277 214 295 216 Q320 210 358 186 Z"
-        fill="#3f3d56"/>
-
-      {/* ── Right arm → pink bag ── */}
-      <path d="M423 158 Q448 170 452 200 Q443 215 433 210 Q431 191 423 173 Z"
-        fill="#3f3d56"/>
-
-      {/* ── Orange folder (left hand) ── */}
-      <rect x="256" y="186" width="48" height="46" rx="5" fill="#f26f37"/>
-      <rect x="265" y="196" width="30" height="5"  rx="2.5" fill="white" opacity="0.45"/>
-      <rect x="265" y="206" width="30" height="5"  rx="2.5" fill="white" opacity="0.38"/>
-      <rect x="265" y="216" width="22" height="5"  rx="2.5" fill="white" opacity="0.3"/>
-
-      {/* ── Pink bag (right hand) ── */}
-      <rect x="438" y="197" width="36" height="46" rx="10" fill="#ff6584"/>
-      <path d="M443 197 Q456 181 470 197"
-        stroke="#c53060" strokeWidth="3" fill="none" strokeLinecap="round"/>
-
-      {/* ── Neck ── */}
-      <rect x="374" y="126" width="21" height="22" rx="8" fill="#ffb8b8"/>
-
-      {/* ── Head ── */}
-      <circle cx="384" cy="96" r="42" fill="#ffb8b8"/>
-
-      {/* ── Hair cap — tight dome on top, face clearly visible ── */}
-      <path d="M 346 96 Q 344 66 356 46 Q 369 24 384 24 Q 401 24 414 44 Q 427 64 424 96 Q 416 74 384 72 Q 352 74 346 96 Z"
-        fill="#2f2e41"/>
-
-      {/* ── PONYTAIL — sweeps upward then right (high ponytail) ── */}
-      <path d="M 416 88 C 444 54 512 28 560 44 C 582 54 582 80 562 94 C 530 110 462 100 420 84 Z"
-        fill="#2f2e41"/>
-
-    </svg>
-  )
-}
-
 /* ── role → first-login route ── */
 const ROLE_REDIRECT = {
   candidate:         '/setup/worker/1',
-  employer:          '/setup/employer/1',
+  employer:          '/setup/company/1',
   training_provider: '/setup/trainer/1',
   admin:             '/dashboard',
   migration_agent:   '/dashboard',
   company_admin:     '/dashboard',
+}
+
+/* ── Style B Background: navy dots + blobs ── */
+function BgStyleB() {
+  return (
+    <>
+      {/* Top-right corner: yellow-green blob */}
+      <div style={{ position:'absolute', top:0, right:0, width:200, height:160,
+        borderRadius:'0 0 0 100%', background:'#e4f5b0', opacity:0.85, zIndex:0 }} />
+      {/* Bottom-left corner: teal blob */}
+      <div style={{ position:'absolute', bottom:0, left:0, width:180, height:150,
+        borderRadius:'0 100% 0 0', background:'#b8e8d8', opacity:0.85, zIndex:0 }} />
+      {/* Top-right: navy hollow circle */}
+      <div style={{ position:'absolute', top:'8%', right:'7%', width:64, height:64,
+        borderRadius:'50%', border:'3px solid #1a1a2e', background:'transparent', opacity:0.25, zIndex:0 }} />
+      {/* Top-right: small navy hollow circle */}
+      <div style={{ position:'absolute', top:'14%', right:'4%', width:40, height:40,
+        borderRadius:'50%', border:'2.5px solid #1a1a2e', background:'transparent', opacity:0.2, zIndex:0 }} />
+      {/* Top-right: tiny navy solid dot */}
+      <div style={{ position:'absolute', top:'6%', right:'9%', width:12, height:12,
+        borderRadius:'50%', background:'#1a1a2e', opacity:0.18, zIndex:0 }} />
+      {/* Bottom-left: navy hollow circle */}
+      <div style={{ position:'absolute', bottom:'8%', left:'7%', width:64, height:64,
+        borderRadius:'50%', border:'3px solid #1a1a2e', background:'transparent', opacity:0.25, zIndex:0 }} />
+      {/* Bottom-left: small navy hollow circle */}
+      <div style={{ position:'absolute', bottom:'14%', left:'4%', width:40, height:40,
+        borderRadius:'50%', border:'2.5px solid #1a1a2e', background:'transparent', opacity:0.2, zIndex:0 }} />
+      {/* Bottom-left: tiny navy solid dot */}
+      <div style={{ position:'absolute', bottom:'6%', left:'9%', width:12, height:12,
+        borderRadius:'50%', background:'#1a1a2e', opacity:0.18, zIndex:0 }} />
+    </>
+  )
+}
+
+/* ── OTP Illustration (RIGHT) ── */
+function IllusOtp() {
+  return (
+    <svg
+      viewBox="0 0 520 480"
+      style={{ width:'100%', maxWidth:560, height:'auto' }}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {/* ── Browser window card at bottom ── */}
+      <rect x="100" y="280" width="320" height="160" rx="14"
+        fill="white" stroke="#e4e8f0" strokeWidth="1.5"/>
+      {/* Orange header bar */}
+      <rect x="100" y="280" width="320" height="38" rx="14" fill="#f26f37"/>
+      <rect x="100" y="300" width="320" height="18" fill="#f26f37"/>
+      {/* Traffic light dots */}
+      <circle cx="124" cy="299" r="6" fill="white" opacity="0.7"/>
+      <circle cx="143" cy="299" r="6" fill="white" opacity="0.5"/>
+      <circle cx="162" cy="299" r="6" fill="white" opacity="0.35"/>
+      {/* Blue bar content */}
+      <rect x="120" y="330" width="180" height="12" rx="6" fill="#5379f4" opacity="0.8"/>
+      {/* Grey lines */}
+      <rect x="120" y="352" width="160" height="9" rx="4" fill="#e0e0e0"/>
+      <rect x="120" y="367" width="200" height="9" rx="4" fill="#e0e0e0"/>
+      <rect x="120" y="382" width="140" height="9" rx="4" fill="#e0e0e0"/>
+      {/* Orange accent bar right */}
+      <rect x="352" y="330" width="52" height="60" rx="8" fill="#f26f37" opacity="0.15"/>
+      <rect x="360" y="340" width="36" height="8" rx="4" fill="#f26f37" opacity="0.6"/>
+      <rect x="360" y="354" width="28" height="8" rx="4" fill="#f26f37" opacity="0.4"/>
+
+      {/* ── Speech bubble (upper left) ── */}
+      <ellipse cx="155" cy="170" rx="100" ry="85"
+        fill="#f0f0f0" stroke="#d0d0d0" strokeWidth="1.5" strokeDasharray="5 4"/>
+      {/* Bubble tail */}
+      <ellipse cx="210" cy="248" rx="28" ry="20"
+        fill="#f0f0f0" stroke="#d0d0d0" strokeWidth="1.5" strokeDasharray="5 4"/>
+      {/* Orange bars inside bubble */}
+      <rect x="80" y="133" width="150" height="22" rx="11" fill="#f26f37" opacity="0.9"/>
+      <rect x="80" y="163" width="150" height="22" rx="11" fill="#f26f37" opacity="0.9"/>
+      <rect x="80" y="193" width="116" height="22" rx="11" fill="#f26f37" opacity="0.9"/>
+
+      {/* ── Woman standing on browser card ── */}
+      {/* Feet / shoes */}
+      <ellipse cx="310" cy="282" rx="20" ry="7" fill="#2f2e41"/>
+      <ellipse cx="350" cy="282" rx="18" ry="7" fill="#2f2e41"/>
+      {/* Legs */}
+      <rect x="302" y="232" width="16" height="52" rx="8" fill="#ffb8b8"/>
+      <rect x="340" y="232" width="16" height="52" rx="8" fill="#ffb8b8"/>
+      {/* Skirt */}
+      <path d="M295 155 Q283 194 298 234 L365 234 Q378 194 368 155 Z" fill="#3f3d56"/>
+      {/* Body */}
+      <rect x="300" y="104" width="60" height="55" rx="8" fill="#3f3d56"/>
+      {/* Left arm holding orange folder */}
+      <path d="M300 118 Q268 126 244 146 Q238 164 254 166 Q274 160 302 140 Z" fill="#3f3d56"/>
+      {/* Right arm */}
+      <path d="M360 114 Q380 124 384 150 Q376 162 366 157 Q364 140 358 124 Z" fill="#3f3d56"/>
+      {/* Orange folder */}
+      <rect x="212" y="140" width="52" height="44" rx="6" fill="#f26f37"/>
+      {/* Folder tab */}
+      <rect x="212" y="134" width="24" height="10" rx="4" fill="#f26f37"/>
+      <rect x="220" y="150" width="36" height="5" rx="2.5" fill="white" opacity="0.5"/>
+      <rect x="220" y="160" width="36" height="5" rx="2.5" fill="white" opacity="0.4"/>
+      <rect x="220" y="170" width="26" height="5" rx="2.5" fill="white" opacity="0.3"/>
+      {/* Neck */}
+      <rect x="322" y="88" width="18" height="18" rx="7" fill="#ffb8b8"/>
+      {/* Head */}
+      <circle cx="331" cy="72" r="28" fill="#ffb8b8"/>
+      {/* High ponytail hair */}
+      <path d="M307 72 Q305 52 315 38 Q323 26 331 26 Q340 26 348 38 Q358 52 356 72 Q350 56 331 54 Q312 56 307 72 Z"
+        fill="#2f2e41"/>
+      {/* Ponytail up */}
+      <path d="M350 62 C 368 36 408 22 438 34 C 454 42 452 62 436 70 C 412 80 368 72 352 64 Z"
+        fill="#2f2e41"/>
+    </svg>
+  )
 }
 
 export function OtpPage() {
@@ -149,7 +144,7 @@ export function OtpPage() {
     if (code.length < 6) { setError('Please enter the 6-digit code.'); return }
     setLoading(true); setError('')
     try {
-      const data = await verifyOtp({ email, otp: code })
+      const data = await verifyOtp({ email, otp_code: code })
       saveToken(data.access_token)
       navigate(ROLE_REDIRECT[data.role] || '/dashboard', { replace: true })
     } catch (err) {
@@ -168,43 +163,17 @@ export function OtpPage() {
 
   return (
     <div style={{
-      minHeight:       '100vh',
-      background:      '#fbfbfb',
-      position:        'relative',
-      overflow:        'hidden',
-      display:         'flex',
-      alignItems:      'center',
-      justifyContent:  'center',
-      padding:         '2rem 1.5rem',
+      minHeight:      '100vh',
+      background:     '#f7f7f7',
+      position:       'relative',
+      overflow:       'hidden',
+      display:        'flex',
+      alignItems:     'center',
+      justifyContent: 'center',
+      padding:        '2rem 1.5rem',
     }}>
 
-      {/* ── Background blobs — exact Figma colors ── */}
-
-      {/* top-right: large blue ellipse */}
-      <div style={{ position:'absolute', top:-90, right:-110, width:370, height:320,
-        borderRadius:'50%', background:'#e6f1ff', opacity:0.9, zIndex:0 }} />
-      {/* top-right: yellow-green ellipse */}
-      <div style={{ position:'absolute', top:15, right:75, width:185, height:160,
-        borderRadius:'50%', background:'#f4f68b', opacity:0.65, zIndex:0 }} />
-
-      {/* bottom-left: large blue ellipse */}
-      <div style={{ position:'absolute', bottom:-90, left:-115, width:355, height:305,
-        borderRadius:'50%', background:'#e6f1ff', opacity:0.85, zIndex:0 }} />
-      {/* bottom-left: yellow-green ellipse */}
-      <div style={{ position:'absolute', bottom:22, left:52, width:170, height:150,
-        borderRadius:'50%', background:'#f4f68b', opacity:0.5, zIndex:0 }} />
-
-      {/* top-left: 4 small green dots */}
-      <div style={{ position:'absolute', top:'8%',  left:'5%',   width:22, height:22, borderRadius:'50%', background:'#b4eb50', opacity:0.7, zIndex:0 }} />
-      <div style={{ position:'absolute', top:'13%', left:'3.5%', width:14, height:14, borderRadius:'50%', background:'#b4eb50', opacity:0.6, zIndex:0 }} />
-      <div style={{ position:'absolute', top:'6%',  left:'8.5%', width:10, height:10, borderRadius:'50%', background:'#b4eb50', opacity:0.55,zIndex:0 }} />
-      <div style={{ position:'absolute', top:'17%', left:'6%',   width:8,  height:8,  borderRadius:'50%', background:'#b4eb50', opacity:0.5, zIndex:0 }} />
-
-      {/* bottom-right: 4 small green dots */}
-      <div style={{ position:'absolute', bottom:'10%', right:'5%',   width:22, height:22, borderRadius:'50%', background:'#b4eb50', opacity:0.7, zIndex:0 }} />
-      <div style={{ position:'absolute', bottom:'16%', right:'3.5%', width:14, height:14, borderRadius:'50%', background:'#b4eb50', opacity:0.6, zIndex:0 }} />
-      <div style={{ position:'absolute', bottom:'8%',  right:'8.5%', width:10, height:10, borderRadius:'50%', background:'#b4eb50', opacity:0.55,zIndex:0 }} />
-      <div style={{ position:'absolute', bottom:'20%', right:'6%',   width:8,  height:8,  borderRadius:'50%', background:'#b4eb50', opacity:0.5, zIndex:0 }} />
+      <BgStyleB />
 
       {/* ── Main layout ── */}
       <div style={{
@@ -212,27 +181,31 @@ export function OtpPage() {
         zIndex:     2,
         display:    'flex',
         alignItems: 'center',
-        gap:        '1.5rem',
-        maxWidth:   1160,
+        gap:        '2rem',
+        maxWidth:   1100,
         width:      '100%',
       }}>
 
-        {/* ── Form card ── */}
+        {/* ── LEFT: Card ── */}
         <div style={{
           flex:         '0 0 auto',
-          width:        345,
-          background:   '#e6f1ff',
+          width:        340,
+          background:   '#dce8ff',
           borderRadius: 20,
-          padding:      '2.6rem 2.1rem',
-          boxShadow:    '0 8px 36px rgba(83,121,244,0.11)',
+          padding:      '2.5rem 2rem',
+          boxShadow:    '0 8px 40px rgba(83,121,244,0.12)',
         }}>
-          <h1 style={{ fontSize:'1.5rem', fontWeight:800, color:'#343434', textAlign:'center', marginBottom:'0.6rem' }}>
+          <h1 style={{ fontSize:'1.5rem', fontWeight:800, color:'#1a1a2e',
+            textAlign:'center', marginBottom:'0.7rem', marginTop:0 }}>
             Verify Email
           </h1>
-          <p style={{ fontSize:'0.84rem', color:'#6a7380', textAlign:'center', lineHeight:1.6, marginBottom:'1.6rem' }}>
+          <p style={{ fontSize:'0.85rem', color:'#6a7380', textAlign:'center',
+            lineHeight:1.6, marginBottom:'1.5rem', marginTop:0 }}>
             We've sent a verification code to your inbox. Please enter it
             below to secure your account and continue.
-            {email && <><br /><strong style={{ color:'#343434' }}>{email}</strong></>}
+            {email && (
+              <><br /><strong style={{ color:'#1a1a2e' }}>{email}</strong></>
+            )}
           </p>
 
           {error && (
@@ -244,9 +217,7 @@ export function OtpPage() {
 
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom:'1.2rem' }}>
-              <label style={{ display:'block', fontSize:'0.85rem', fontWeight:600, color:'#343434', marginBottom:'0.4rem' }}>
-                Code
-              </label>
+              <label style={labelStyle}>Code</label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -254,9 +225,7 @@ export function OtpPage() {
                 maxLength={6}
                 value={code}
                 onChange={e => { setCode(e.target.value.replace(/\D/g, '')); setError('') }}
-                style={{ width:'100%', padding:'0.82rem 1rem', borderRadius:10,
-                  border:'1.5px solid #c8d4f0', background:'#fff', fontSize:'1rem',
-                  outline:'none', boxSizing:'border-box', color:'#343434' }}
+                style={inputStyle}
               />
             </div>
 
@@ -282,31 +251,38 @@ export function OtpPage() {
                 onClick={handleResend}
                 disabled={resendLoading || countdown > 0}
                 style={{
-                  background:'none', border:'none', color:'#403c8b',
+                  background:'none', border:'none', color:'#5379f4',
                   fontSize:'0.88rem', fontWeight:600,
                   cursor:(resendLoading || countdown > 0) ? 'not-allowed' : 'pointer',
                   opacity:(resendLoading || countdown > 0) ? 0.55 : 1,
                   textDecoration:'underline',
+                  padding:0,
                 }}
               >
-                {countdown > 0 ? `Resend code (${countdown}s)` : resendLoading ? 'Sending…' : 'Resend code'}
+                {countdown > 0
+                  ? `Resend code (${countdown}s)`
+                  : resendLoading ? 'Sending…' : 'Resend code'}
               </button>
             </div>
           </form>
         </div>
 
-        {/* ── Illustration (right) ── */}
-        <div style={{
-          flex:       1,
-          minWidth:   0,
-          display:    'flex',
-          alignItems: 'center',
-          overflow:   'hidden',
-        }}>
-          <IllusRight />
+        {/* ── RIGHT: Illustration ── */}
+        <div style={{ flex:1, minWidth:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <IllusOtp />
         </div>
 
       </div>
     </div>
   )
+}
+
+/* ── Shared micro-styles ── */
+const labelStyle = {
+  display:'block', fontSize:'0.85rem', fontWeight:600, color:'#1a1a2e', marginBottom:'0.4rem',
+}
+const inputStyle = {
+  width:'100%', padding:'0.75rem 1rem', borderRadius:10,
+  border:'1.5px solid #d0dbf0', background:'#fff', fontSize:'1rem',
+  outline:'none', boxSizing:'border-box', color:'#1a1a2e',
 }
