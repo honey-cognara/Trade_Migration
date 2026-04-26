@@ -135,7 +135,17 @@ async def delete_provider(
     provider = result.scalar_one_or_none()
     if not provider:
         raise HTTPException(status_code=404, detail="Training provider not found")
-        
+
+    # Delete child recommendations → courses first (no DB cascade)
+    courses_res = await db.execute(select(TrainingCourse).where(TrainingCourse.provider_id == prov_uuid))
+    for course in courses_res.scalars().all():
+        recs_res = await db.execute(
+            select(CandidateRecommendedCourse).where(CandidateRecommendedCourse.course_id == course.id)
+        )
+        for rec in recs_res.scalars().all():
+            await db.delete(rec)
+        await db.delete(course)
+
     await db.delete(provider)
     await db.commit()
     return None
@@ -239,7 +249,14 @@ async def delete_course(
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=404, detail="Training course not found")
-        
+
+    # Delete child recommendations first (no DB cascade)
+    recs_res = await db.execute(
+        select(CandidateRecommendedCourse).where(CandidateRecommendedCourse.course_id == course_uuid)
+    )
+    for rec in recs_res.scalars().all():
+        await db.delete(rec)
+
     await db.delete(course)
     await db.commit()
     return None

@@ -24,6 +24,8 @@ from backend.api.dependencies.rbac import get_current_user, require_roles
 from backend.db.models.models import (
     CandidateProfile, ExpressionOfInterest, User,
     CandidateEmployerConsent, VisaShareApproval, EmployerCompany,
+    CandidateRecommendedCourse, ElectricalWorkerScore,
+    VisaApplication, ApplicantDocument, VisaCaseAssignment,
 )
 
 router = APIRouter()
@@ -241,6 +243,34 @@ async def delete_profile(
     profile = await _get_own_profile(current_user.id, db)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
+
+    # Delete child records first (no DB cascade)
+    for model in (CandidateRecommendedCourse, CandidateEmployerConsent,
+                  VisaShareApproval, ExpressionOfInterest, ApplicantDocument):
+        rows = await db.execute(select(model).where(model.candidate_id == profile.id))
+        for row in rows.scalars().all():
+            await db.delete(row)
+
+    # Delete visa applications + their case assignments (no DB cascade)
+    va_rows = await db.execute(
+        select(VisaApplication).where(VisaApplication.candidate_id == profile.id)
+    )
+    for va in va_rows.scalars().all():
+        assign_rows = await db.execute(
+            select(VisaCaseAssignment).where(VisaCaseAssignment.visa_application_id == va.id)
+        )
+        for assignment in assign_rows.scalars().all():
+            await db.delete(assignment)
+        await db.delete(va)
+
+    # Delete electrical score if exists
+    score_res = await db.execute(
+        select(ElectricalWorkerScore).where(ElectricalWorkerScore.candidate_id == profile.id)
+    )
+    score = score_res.scalar_one_or_none()
+    if score:
+        await db.delete(score)
+
     await db.delete(profile)
     await db.commit()
     return None

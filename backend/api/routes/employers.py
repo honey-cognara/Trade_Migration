@@ -20,7 +20,10 @@ from sqlalchemy import select, and_
 
 from backend.db.setup import get_db
 from backend.api.dependencies.rbac import get_current_user, require_roles
-from backend.db.models.models import EmployerCompany, CandidateProfile, ExpressionOfInterest, User
+from backend.db.models.models import (
+    EmployerCompany, CandidateProfile, ExpressionOfInterest, User,
+    CandidateEmployerConsent, VisaShareApproval, VisaApplication, VisaCaseAssignment,
+)
 
 router = APIRouter()
 
@@ -154,6 +157,29 @@ async def delete_my_company(
     company = result.scalar_one_or_none()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
+
+    # Delete child records first (no DB cascade)
+    for model, field in [
+        (ExpressionOfInterest, ExpressionOfInterest.employer_company_id),
+        (CandidateEmployerConsent, CandidateEmployerConsent.employer_company_id),
+        (VisaShareApproval, VisaShareApproval.employer_company_id),
+    ]:
+        rows = await db.execute(select(model).where(field == company.id))
+        for row in rows.scalars().all():
+            await db.delete(row)
+
+    # Delete visa applications + their assignments
+    va_rows = await db.execute(
+        select(VisaApplication).where(VisaApplication.employer_company_id == company.id)
+    )
+    for va in va_rows.scalars().all():
+        assign_rows = await db.execute(
+            select(VisaCaseAssignment).where(VisaCaseAssignment.visa_application_id == va.id)
+        )
+        for assignment in assign_rows.scalars().all():
+            await db.delete(assignment)
+        await db.delete(va)
+
     await db.delete(company)
     await db.commit()
     return None

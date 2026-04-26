@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from backend.db.setup import get_db
 from backend.api.dependencies.rbac import get_current_user, require_roles
-from backend.db.models.models import VisaApplication, CandidateProfile, User
+from backend.db.models.models import VisaApplication, CandidateProfile, User, VisaCaseAssignment
 
 router = APIRouter()
 
@@ -203,6 +203,13 @@ async def delete_visa_application(
     application = result.scalar_one_or_none()
     if not application:
         raise HTTPException(status_code=404, detail="Visa application not found")
+
+    # Delete child assignments first (no DB cascade)
+    assign_res = await db.execute(
+        select(VisaCaseAssignment).where(VisaCaseAssignment.visa_application_id == app_uuid)
+    )
+    for assignment in assign_res.scalars().all():
+        await db.delete(assignment)
 
     await db.delete(application)
     await db.commit()
