@@ -18,6 +18,7 @@ limiter = Limiter(key_func=get_remote_address)
 from backend.db.setup import init_db
 from backend.api.routes import (
     auth,
+    oauth,
     dashboard,
     admin,
     candidates,
@@ -72,6 +73,7 @@ app.add_middleware(
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(auth.router,               prefix="/auth",      tags=["Authentication"])
+app.include_router(oauth.router,              prefix="/auth",      tags=["Social Login"])
 app.include_router(dashboard.router,          prefix="/dashboard", tags=["Dashboard"])
 app.include_router(admin.router,              prefix="/admin",     tags=["Admin"])
 app.include_router(candidates.router,         prefix="/candidates",tags=["Candidates"])

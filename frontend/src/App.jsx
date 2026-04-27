@@ -1,13 +1,14 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { LandingPage }      from './pages/LandingPage'
-import { LoginPage }        from './pages/LoginPage'
-import { RegisterPage }     from './pages/RegisterPage'
-import { OtpPage }          from './pages/OtpPage'
+import { LandingPage }        from './pages/LandingPage'
+import { LoginPage }          from './pages/LoginPage'
+import { RegisterPage }       from './pages/RegisterPage'
+import { OtpPage }            from './pages/OtpPage'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
-import { WorkerSetup }      from './pages/worker/WorkerSetup'
-import { CompanySetup }     from './pages/company/CompanySetup'
-import { TrainerSetup }     from './pages/trainer/TrainerSetup'
-import { DashboardPage }    from './pages/DashboardPage'
+import { OAuthCallbackPage }  from './pages/OAuthCallbackPage'
+import { WorkerSetup }        from './pages/worker/WorkerSetup'
+import { CompanySetup }       from './pages/company/CompanySetup'
+import { TrainerSetup }       from './pages/trainer/TrainerSetup'
+import { DashboardPage }      from './pages/DashboardPage'
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
       <Route path="/register"        element={<RegisterPage />} />
       <Route path="/verify-otp"      element={<OtpPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/oauth-callback"  element={<OAuthCallbackPage />} />
 
       {/* Worker / Candidate setup
           Both /setup/worker/:step and /setup/employer/:step point to the same component.

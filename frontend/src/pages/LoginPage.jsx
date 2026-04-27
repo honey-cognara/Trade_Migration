@@ -275,13 +275,21 @@ export function LoginPage() {
 
             {/* SSO buttons */}
             <div style={{ display:'flex', gap:16, alignItems:'center', justifyContent:'center' }}>
-              <button type="button" style={ssoBtnStyle}>
+              <button
+                type="button"
+                style={ssoBtnStyle}
+                onClick={() => { window.location.href = 'http://localhost:8000/auth/linkedin?role=candidate' }}
+              >
                 <img src={iconLinkedin} alt="LinkedIn" style={{ width:24, height:24, flexShrink:0 }} />
                 <span style={{ fontFamily:font, fontSize:16, fontWeight:600, color:'#403c8b', lineHeight:1.3 }}>
                   Sign in with Linked In
                 </span>
               </button>
-              <button type="button" style={ssoBtnStyle}>
+              <button
+                type="button"
+                style={ssoBtnStyle}
+                onClick={() => { window.location.href = 'http://localhost:8000/auth/google?role=candidate' }}
+              >
                 <img src={iconGoogle} alt="Google" style={{ width:24, height:24, flexShrink:0 }} />
                 <span style={{ fontFamily:font, fontSize:16, fontWeight:600, color:'#403c8b', lineHeight:1.3 }}>
                   Sign in with Google
